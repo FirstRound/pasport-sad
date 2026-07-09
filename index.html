@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Платформа управления садом | Собрано в базе</title>
+    <title>Паспорт сорта</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -82,20 +82,20 @@
         </div>
         <nav class="flex-1 px-5 py-4 space-y-2">
             <button @click="setView('dashboard')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'dashboard', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'dashboard'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-chart-pie w-5"></i> Сводка по саду</button>
-            <button @click="setView('directory')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'directory', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'directory'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-seedling w-5"></i> Реестр сортов</button>
+            <button @click="setView('directory')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'directory', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'directory'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-seedling w-5"></i> Реестр сорто-подвоев</button>
             <button @click="setView('cards')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'cards', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'cards'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-apple-whole w-5"></i> Витрина урожая</button>
             
             <div class="w-full h-px bg-white/10 my-4"></div>
             <div class="px-4 pb-2 text-[10px] font-bold text-white/30 uppercase tracking-widest">База знаний</div>
 
-            <!-- Вкладка: Граф решений (Мастер-план) -->
-            <button @click="setView('decision_graph_detail')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'decision_graph_detail', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'decision_graph_detail'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-diagram-project w-5"></i> План-протоколы</button>
+            <!-- Вкладка: Граф решений -->
+            <button @click="setView('decision_graph_catalog')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView.includes('decision_graph'), 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': !currentView.includes('decision_graph')}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-diagram-project w-5"></i> План-протоколы</button>
             
             <!-- Вкладка: Матрица Регламентов -->
-            <button @click="setView('protocols')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'protocols', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'protocols'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-clipboard-list w-5"></i> Регламенты</button>
+            <button @click="setView('protocols')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'protocols', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'protocols'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-clipboard-list w-5"></i> Регламенты (SOP)</button>
         </nav>
 
-        <!-- Нижняя часть сайдбара: Профиль и Интеграция -->
+        <!-- Нижняя часть сайдбара -->
         <div class="p-6 mt-auto border-t border-white/10 flex flex-col gap-5 relative z-10">
             <div @click="isUserModalOpen = true" class="flex items-center gap-3 cursor-pointer p-2 -mx-2 rounded-xl hover:bg-white/5 transition-colors">
                 <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=100&q=80" alt="Avatar" class="w-10 h-10 rounded-full border-2 border-brand-green object-cover shadow-sm">
@@ -120,9 +120,7 @@
                 <h2 class="text-3xl font-serif font-bold text-brand-dark">{{ viewTitle }}</h2>
             </div>
             <div class="flex items-center gap-6">
-                <div class="text-sm font-bold text-brand-dark/50 bg-brand-surface px-4 py-2 rounded-full border border-[#E8E3D5] shadow-sm">
-                    Сортов в базе: <span class="text-brand-dark">{{ varieties.length }}</span>
-                </div>
+                <!-- Убрана плашка по просьбе пользователя -->
             </div>
         </header>
 
@@ -137,22 +135,26 @@
                 
                 <!-- 1. ДАШБОРД -->
                 <div v-if="currentView === 'dashboard'" key="dashboard" class="space-y-8 max-w-[1600px] mx-auto">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6">
                         <div class="bg-white p-6 rounded-[2rem] border border-[#E8E3D5] shadow-soft flex flex-col justify-between relative overflow-hidden">
                             <i class="fa-solid fa-apple-whole absolute -bottom-4 -right-4 text-8xl text-brand-surface"></i>
-                            <div class="text-sm text-brand-dark/50 font-bold uppercase tracking-wider mb-2 relative z-10">Всего сортов</div>
+                            <div class="text-sm text-brand-dark/50 font-bold uppercase tracking-wider mb-2 relative z-10">Всего<br>сорто-подвоев</div>
                             <div class="text-4xl font-serif font-bold text-brand-dark relative z-10">{{ varieties.length > 0 ? varieties.length : 24 }}</div>
                         </div>
                         <div class="bg-brand-red text-white p-6 rounded-[2rem] shadow-soft flex flex-col justify-between">
-                            <div class="text-sm text-white/80 font-bold uppercase tracking-wider mb-2">Целевые (Invest)</div>
+                            <div class="text-sm text-white/80 font-bold uppercase tracking-wider mb-2">Целевые<br>(Invest)</div>
                             <div class="text-4xl font-serif font-bold">{{ investCount > 0 ? investCount : 8 }}</div>
                         </div>
+                        <div class="bg-blue-600 text-white p-6 rounded-[2rem] shadow-soft flex flex-col justify-between">
+                            <div class="text-sm text-white/80 font-bold uppercase tracking-wider mb-2">Основные<br>(Core)</div>
+                            <div class="text-4xl font-serif font-bold">{{ coreCount > 0 ? coreCount : 12 }}</div>
+                        </div>
                         <div class="bg-brand-green text-white p-6 rounded-[2rem] shadow-soft flex flex-col justify-between">
-                            <div class="text-sm text-white/80 font-bold uppercase tracking-wider mb-2">Начало уборки (раннее)</div>
+                            <div class="text-sm text-white/80 font-bold uppercase tracking-wider mb-2">Начало уборки<br>(Раннее)</div>
                             <div class="text-4xl font-serif font-bold">{{ earliestHarvest !== '—' ? earliestHarvest : '15.08' }}</div>
                         </div>
                         <div class="bg-brand-yellow text-brand-dark p-6 rounded-[2rem] shadow-soft flex flex-col justify-between">
-                            <div class="text-sm text-brand-dark/60 font-bold uppercase tracking-wider mb-2">Макс. срок хранения</div>
+                            <div class="text-sm text-brand-dark/60 font-bold uppercase tracking-wider mb-2">Макс. срок<br>хранения</div>
                             <div class="text-4xl font-serif font-bold">{{ maxStorage > 0 ? maxStorage : 11 }} <span class="text-xl">мес.</span></div>
                         </div>
                     </div>
@@ -160,7 +162,7 @@
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         <div class="bg-white p-8 rounded-[2rem] border border-[#E8E3D5] shadow-soft lg:col-span-2">
                             <div class="flex justify-between items-center mb-2">
-                                <h3 class="text-xl font-serif font-bold text-brand-dark">Вкусовая матрица сортов</h3>
+                                <h3 class="text-xl font-serif font-bold text-brand-dark">Вкусовая матрица</h3>
                                 <span class="bg-brand-surface text-xs font-bold px-3 py-1 rounded-full text-brand-dark/50">BRIX / Кислотность / Твердость</span>
                             </div>
                             <p class="text-sm text-brand-dark/50 mb-6 font-medium">Отображает баланс вкуса. Размер пузырька отражает твердость плода.</p>
@@ -168,7 +170,7 @@
                         </div>
                         <div class="bg-white p-8 rounded-[2rem] border border-[#E8E3D5] shadow-soft">
                             <h3 class="text-xl font-serif font-bold text-brand-dark mb-2">Профиль потребителя</h3>
-                            <p class="text-sm text-brand-dark/50 mb-6 font-medium">Сравнение эталонных сортов.</p>
+                            <p class="text-sm text-brand-dark/50 mb-6 font-medium">Сравнение эталонных сорто-подвоев.</p>
                             <div id="chart-radar" class="min-h-[350px]"></div>
                         </div>
                         <div class="bg-white p-8 rounded-[2rem] border border-[#E8E3D5] shadow-soft lg:col-span-3">
@@ -182,8 +184,8 @@
                     </div>
                 </div>
 
-                <!-- 2. РЕЕСТР И 3. ВИТРИНА -->
-                <div v-else-if="currentView === 'directory' || currentView === 'cards'" :key="currentView" class="max-w-[1600px] mx-auto flex flex-col h-full">
+                <!-- 2. РЕЕСТР И 3. ВИТРИНА (Общая панель фильтров) -->
+                <div v-else-if="currentView === 'directory' || currentView === 'cards' || currentView === 'decision_graph_catalog'" :key="currentView" class="max-w-[1600px] mx-auto flex flex-col h-full">
                     <div class="bg-white p-5 rounded-[2rem] border border-[#E8E3D5] shadow-sm mb-6 flex flex-wrap gap-4 items-center shrink-0">
                         <div class="relative w-full md:w-80">
                             <i class="fa-solid fa-search absolute left-5 top-3.5 text-brand-dark/40"></i>
@@ -217,7 +219,7 @@
                             <table class="w-full text-left border-collapse whitespace-nowrap">
                                 <thead class="bg-brand-surface">
                                     <tr class="text-brand-dark/50 text-xs font-bold uppercase tracking-widest border-b border-[#E8E3D5]">
-                                        <th class="px-6 py-5">Название сорта</th>
+                                        <th class="px-6 py-5">Название сорто-подвоя</th>
                                         <th class="px-6 py-5">Группа / Реализация</th>
                                         <th class="px-6 py-5">Кислота / Сахар (BRIX)</th>
                                         <th class="px-6 py-5">Хранение</th>
@@ -240,13 +242,13 @@
                                         </td>
                                         <td class="px-6 py-4 font-bold text-brand-green">{{ v['Поведение при хранении (до) (CA/ULO мес.)'] || '-' }} мес.</td>
                                         <td class="px-6 py-4 text-right opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2">
-                                            <button @click="openHistoryModal(v)" class="w-10 h-10 rounded-xl bg-white border border-[#E8E3D5] text-blue-500 hover:bg-blue-500 hover:text-white transition-all shadow-sm" title="История изменений">
+                                            <button @click="openHistoryModal(v)" class="w-10 h-10 rounded-xl bg-white border border-[#E8E3D5] text-blue-500 hover:bg-blue-500 hover:text-white transition-all shadow-sm" title="История изменений и согласований">
                                                 <i class="fa-solid fa-clock-rotate-left"></i>
                                             </button>
                                             <button @click="openModal('edit', v)" class="w-10 h-10 rounded-xl bg-white border border-[#E8E3D5] text-brand-yellow hover:bg-brand-yellow hover:text-white transition-all shadow-sm" title="Редактировать">
                                                 <i class="fa-solid fa-pen"></i>
                                             </button>
-                                            <button @click="setView('detail', v)" class="w-10 h-10 rounded-xl bg-white border border-[#E8E3D5] text-brand-green hover:bg-brand-green hover:text-white transition-all shadow-sm" title="Открыть карточку">
+                                            <button @click="setView('detail', v)" class="w-10 h-10 rounded-xl bg-white border border-[#E8E3D5] text-brand-green hover:bg-brand-green hover:text-white transition-all shadow-sm" title="Открыть паспорт">
                                                 <i class="fa-solid fa-arrow-right"></i>
                                             </button>
                                         </td>
@@ -269,114 +271,216 @@
                                 <span class="bg-brand-red/10 text-brand-red px-2 py-1 rounded-md text-[10px] font-bold"><i class="fa-solid fa-star mr-1"></i> {{ v['Категория сорта'] || 'Premium' }}</span>
                                 <span class="bg-brand-dark text-white px-2 py-1 rounded-md text-[10px] font-bold"><i class="fa-solid fa-truck-fast mr-1"></i> {{ v['Категория реализации'] || 'Invest' }}</span>
                             </div>
-                            <div class="mt-auto relative z-10 bg-brand-surface p-3 rounded-2xl border border-[#E8E3D5]">
-                                <div class="grid grid-cols-2 gap-y-3 gap-x-2 text-xs">
-                                    <div class="flex justify-between items-center"><span class="text-brand-dark/50 flex items-center gap-1.5"><i class="fa-solid fa-flask text-brand-green"></i> BRIX</span><span class="font-bold text-brand-dark">{{ v['BRIX (от), %'] || '-' }}%</span></div>
-                                    <div class="flex justify-between items-center"><span class="text-brand-dark/50 flex items-center gap-1.5"><i class="fa-solid fa-lemon text-brand-yellow"></i> Кисл.</span><span class="font-bold text-brand-dark">{{ v['Кислотность (от), г/л'] || '-' }}</span></div>
-                                    <div class="flex justify-between items-center"><span class="text-brand-dark/50 flex items-center gap-1.5"><i class="fa-solid fa-dumbbell text-brand-dark/40"></i> Тверд.</span><span class="font-bold text-brand-dark">{{ v['Твердость, кг/см2'] || '-' }}</span></div>
-                                    <div class="flex justify-between items-center"><span class="text-brand-dark/50 flex items-center gap-1.5"><i class="fa-solid fa-snowflake text-blue-400"></i> ULO</span><span class="font-bold text-brand-green">{{ v['Поведение при хранении (до) (CA/ULO мес.)'] || '-' }}м</span></div>
+                            <div class="mt-auto relative z-10 bg-brand-surface p-4 rounded-2xl border border-[#E8E3D5]">
+                                <div class="grid grid-cols-2 gap-y-4 gap-x-2 text-xs">
+                                    <div class="flex items-center gap-2"><i class="fa-solid fa-flask text-brand-green w-4 text-center"></i><div><div class="text-[9px] text-brand-dark/40 uppercase font-bold">BRIX</div><div class="font-bold text-brand-dark">{{ v['BRIX (от), %'] || '-' }}%</div></div></div>
+                                    <div class="flex items-center gap-2"><i class="fa-solid fa-lemon text-brand-yellow w-4 text-center"></i><div><div class="text-[9px] text-brand-dark/40 uppercase font-bold">Кисл.</div><div class="font-bold text-brand-dark">{{ v['Кислотность (от), г/л'] || '-' }}</div></div></div>
+                                    <div class="flex items-center gap-2"><i class="fa-solid fa-dumbbell text-brand-dark/40 w-4 text-center"></i><div><div class="text-[9px] text-brand-dark/40 uppercase font-bold">Тверд.</div><div class="font-bold text-brand-dark">{{ v['Твердость, кг/см2'] || '-' }}</div></div></div>
+                                    <div class="flex items-center gap-2"><i class="fa-solid fa-snowflake text-blue-400 w-4 text-center"></i><div><div class="text-[9px] text-brand-dark/40 uppercase font-bold">ULO</div><div class="font-bold text-brand-green">{{ v['Поведение при хранении (до) (CA/ULO мес.)'] || '-' }}м</div></div></div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ВИД: КАТАЛОГ ГРАФОВ РЕШЕНИЙ -->
+                    <div v-else-if="currentView === 'decision_graph_catalog'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-6">
+                        <div v-for="v in filteredAndSortedVarieties" :key="'graph-' + v.id" @click="setView('decision_graph_detail', v)" class="bg-white border border-[#E8E3D5] rounded-[2rem] p-6 cursor-pointer card-hover flex flex-col h-full relative overflow-hidden group">
+                            <div class="absolute -right-6 -top-6 w-24 h-24 bg-brand-surface rounded-full group-hover:bg-brand-green/10 transition-colors z-0"></div>
+                            <div class="mb-4 relative z-10"><h3 class="font-serif font-bold text-brand-dark text-2xl mb-1">{{ v['Сорт'] }}</h3></div>
+                            <div class="relative z-10 flex-1 flex flex-col justify-center items-start">
+                                <span class="inline-block bg-brand-green text-white text-[10px] font-bold uppercase px-3 py-1 rounded-full mb-3">{{ v['Группа сорта'] || 'Сорт' }}</span>
+                                <div class="text-sm font-bold text-brand-dark/50 flex items-center gap-2 mt-auto"><i class="fa-solid fa-diagram-project"></i> Открыть план-протоколы</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 4. ДЕТАЛЬНАЯ КАРТОЧКА СОРТА -->
-                <div v-else-if="currentView === 'detail' && selectedVariety" key="detail" class="max-w-5xl mx-auto w-full">
-                    <div class="mb-6">
+                <!-- 4. ДЕТАЛЬНАЯ КАРТОЧКА СОРТО-ПОДВОЯ -->
+                <div v-else-if="currentView === 'detail' && selectedVariety" key="detail" class="max-w-[1400px] mx-auto w-full">
+                    <div class="mb-6 flex justify-between items-center">
                         <button @click="setView('cards')" class="text-sm font-bold text-brand-green hover:text-brand-dark flex items-center gap-2 bg-white px-5 py-2 rounded-full border border-[#E8E3D5] shadow-sm">
                             <i class="fa-solid fa-arrow-left"></i> Назад
+                        </button>
+                        <button @click="openModal('edit', selectedVariety)" class="text-sm font-bold text-brand-yellow hover:text-brand-dark flex items-center gap-2 bg-white px-5 py-2 rounded-full border border-[#E8E3D5] shadow-sm">
+                            <i class="fa-solid fa-pen"></i> Редактировать паспорт
                         </button>
                     </div>
 
                     <div class="bg-white rounded-[2rem] border border-[#E8E3D5] shadow-soft overflow-hidden">
-                        <div class="relative bg-brand-surface px-10 pt-12 pb-8 overflow-hidden">
-                            <div class="absolute -right-20 -bottom-20 opacity-10 text-[250px] text-brand-green"><i class="fa-solid fa-leaf"></i></div>
-                            <div class="relative z-10">
-                                <div class="text-brand-red font-bold tracking-widest uppercase text-xs mb-3 flex items-center gap-2"><i class="fa-solid fa-star"></i> {{ selectedVariety['Категория сорта'] || 'Премиум' }}</div>
-                                <h2 class="text-5xl font-serif font-bold text-brand-dark mb-2">{{ selectedVariety['Сорт'] }}</h2>
-                                <p class="text-brand-dark/60 font-medium text-lg max-w-xl">{{ selectedVariety['Покровная окраска'] }}</p>
+                        
+                        <!-- Header паспорта -->
+                        <div class="relative bg-gradient-to-br from-brand-surface to-[#E8E3D5] px-10 pt-12 pb-10 overflow-hidden">
+                            <div class="absolute -right-10 -bottom-20 opacity-[0.03] text-[350px] text-brand-dark"><i class="fa-solid fa-apple-whole"></i></div>
+                            <div class="relative z-10 flex justify-between items-end">
+                                <div>
+                                    <div class="text-brand-red font-bold tracking-widest uppercase text-xs mb-3 flex items-center gap-2">
+                                        <i class="fa-solid fa-star"></i> {{ extendedVarietyDetails['Категория сорта'] || 'Премиум' }}
+                                    </div>
+                                    <h2 class="text-5xl font-serif font-bold text-brand-dark mb-3">{{ extendedVarietyDetails['Сорт'] }}</h2>
+                                    <p class="text-brand-dark/60 font-medium text-lg max-w-xl">{{ extendedVarietyDetails['Покровная окраска'] }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-[10px] uppercase font-bold text-brand-dark/40 tracking-widest mb-1">Код сорто-подвоя</div>
+                                    <div class="bg-white border border-[#D5D0C5] rounded-lg px-4 py-2 text-lg font-bold text-brand-dark shadow-sm">{{ extendedVarietyDetails['Код сорто-подвоя'] }}</div>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="px-10 bg-brand-surface border-b border-[#E8E3D5] flex gap-8">
-                            <button @click="activeDetailTab = 'main'" :class="{'border-b-[3px] border-brand-green text-brand-dark font-bold': activeDetailTab === 'main', 'text-brand-dark/50 border-transparent': activeDetailTab !== 'main'}" class="pb-4 pt-2 uppercase tracking-wider text-sm">Паспорт сорта</button>
-                            <button @click="activeDetailTab = 'calendar'" :class="{'border-b-[3px] border-brand-green text-brand-dark font-bold': activeDetailTab === 'calendar', 'text-brand-dark/50 border-transparent': activeDetailTab !== 'calendar'}" class="pb-4 pt-2 uppercase tracking-wider text-sm">Календарь (Июнь 2026)</button>
+                        <!-- Навигация -->
+                        <div class="px-10 bg-brand-surface/50 border-b border-[#E8E3D5] flex gap-8">
+                            <button @click="activeDetailTab = 'main'" :class="{'border-b-[3px] border-brand-green text-brand-dark font-bold': activeDetailTab === 'main', 'text-brand-dark/50 border-transparent': activeDetailTab !== 'main'}" class="pb-4 pt-4 uppercase tracking-wider text-sm">Паспорт сорто-подвоя</button>
+                            <button @click="activeDetailTab = 'calendar'" :class="{'border-b-[3px] border-brand-green text-brand-dark font-bold': activeDetailTab === 'calendar', 'text-brand-dark/50 border-transparent': activeDetailTab !== 'calendar'}" class="pb-4 pt-4 uppercase tracking-wider text-sm">Календарь (Июнь 2026)</button>
                         </div>
 
+                        <!-- Содержимое -->
                         <div class="p-10 bg-white">
                             <transition name="fade" mode="out-in">
-                                <!-- ВКЛАДКА: ПАСПОРТ -->
+                                
+                                <!-- ВКЛАДКА: ПАСПОРТ (КРАСИВЫЙ ВИЗУАЛЬНЫЙ СТИЛЬ) -->
                                 <div v-if="activeDetailTab === 'main'" key="main" class="space-y-12">
+                                    
+                                    <!-- Секция 1: Идентификация и Генетика -->
                                     <div>
-                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-4 flex items-center gap-3"><i class="fa-solid fa-tags text-brand-red"></i> Маркетинговый профиль</h4>
-                                        <div class="flex flex-wrap gap-4">
-                                            <div class="bg-brand-surface px-6 py-4 rounded-2xl border border-[#E8E3D5] flex items-center gap-4">
-                                                <div class="w-10 h-10 rounded-full bg-brand-yellow/20 text-brand-yellow flex items-center justify-center"><i class="fa-solid fa-star"></i></div>
-                                                <div><div class="text-[10px] text-brand-dark/40 font-bold uppercase tracking-widest">Группа / Категория</div><div class="text-lg font-bold">{{ selectedVariety['Группа сорта'] }}</div></div>
+                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3"><span class="w-2 h-6 bg-brand-red rounded-full"></span> Общие параметры и Генетика</h4>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <!-- Визуальные карточки -->
+                                            <div class="bg-brand-bg border border-[#E8E3D5] rounded-2xl p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+                                                <div class="w-12 h-12 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-tags"></i></div>
+                                                <div><div class="text-[10px] text-brand-dark/40 font-bold uppercase tracking-widest mb-0.5">Группа созревания</div><div class="text-sm font-bold text-brand-dark">{{ extendedVarietyDetails['Группа созревания'] }}</div></div>
                                             </div>
-                                            <div class="bg-brand-dark text-white px-6 py-4 rounded-2xl flex items-center gap-4 shadow-lg">
-                                                <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center"><i class="fa-solid fa-truck-fast"></i></div>
-                                                <div><div class="text-[10px] text-white/50 font-bold uppercase tracking-widest">Реализация</div><div class="text-lg font-bold">{{ selectedVariety['Категория реализации'] }}</div></div>
+                                            <div class="bg-brand-bg border border-[#E8E3D5] rounded-2xl p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+                                                <div class="w-12 h-12 rounded-full bg-brand-yellow/10 text-brand-yellow flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-crown"></i></div>
+                                                <div><div class="text-[10px] text-brand-dark/40 font-bold uppercase tracking-widest mb-0.5">Тип сорта</div><div class="text-sm font-bold text-brand-dark">{{ extendedVarietyDetails['Тип сорта'] }}</div></div>
+                                            </div>
+                                            <div class="bg-brand-bg border border-[#E8E3D5] rounded-2xl p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+                                                <div class="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-globe"></i></div>
+                                                <div><div class="text-[10px] text-brand-dark/40 font-bold uppercase tracking-widest mb-0.5">Селекционер</div><div class="text-sm font-bold text-brand-dark line-clamp-1" :title="extendedVarietyDetails['Селекционер']">{{ extendedVarietyDetails['Селекционер'] }}</div></div>
+                                            </div>
+                                            <div class="bg-brand-bg border border-[#E8E3D5] rounded-2xl p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+                                                <div class="w-12 h-12 rounded-full bg-brand-green/10 text-brand-green flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-check-double"></i></div>
+                                                <div><div class="text-[10px] text-brand-dark/40 font-bold uppercase tracking-widest mb-0.5">Статус в базе</div><div class="text-sm font-bold text-brand-green">{{ extendedVarietyDetails['Статус'] }}</div></div>
                                             </div>
                                         </div>
                                     </div>
 
+                                    <!-- Секция 2: Качество плодов -->
                                     <div>
-                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-4 flex items-center gap-3"><i class="fa-solid fa-flask text-brand-green"></i> Вкусовой баланс</h4>
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div class="bg-brand-bg p-6 rounded-3xl border border-[#F0ECE1] flex items-center gap-6">
-                                                <div class="relative w-24 h-24">
-                                                    <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                                                        <path class="text-[#E8E3D5]" stroke-width="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                                        <path class="text-brand-yellow" stroke-width="3" :stroke-dasharray="`${(parseFloat(selectedVariety['BRIX (от), %']) / 20) * 100}, 100`" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                                    </svg>
-                                                    <div class="absolute inset-0 flex items-center justify-center flex-col">
-                                                        <span class="text-xl font-bold">{{ selectedVariety['BRIX (от), %'] }}</span><span class="text-[8px] uppercase font-bold text-brand-dark/50">Brix %</span>
-                                                    </div>
-                                                </div>
-                                                <div><div class="font-bold text-lg">Сладость (Сахар)</div><p class="text-sm text-brand-dark/50 mt-1">Определяет десертные качества плода.</p></div>
+                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3"><span class="w-2 h-6 bg-brand-yellow rounded-full"></span> Качество плодов (Потребительские свойства)</h4>
+                                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                                            
+                                            <div class="bg-gradient-to-b from-white to-brand-bg border border-[#E8E3D5] rounded-2xl p-4 text-center hover:-translate-y-1 transition-transform shadow-sm">
+                                                <i class="fa-solid fa-apple-whole text-3xl text-brand-red mb-3"></i>
+                                                <div class="text-[9px] uppercase font-bold text-brand-dark/40 mb-1">Форма</div>
+                                                <div class="text-sm font-bold text-brand-dark leading-tight">{{ extendedVarietyDetails['Форма плода'] }}</div>
                                             </div>
-                                            <div class="bg-brand-bg p-6 rounded-3xl border border-[#F0ECE1] flex flex-col justify-center">
-                                                <div class="flex justify-between items-end mb-3"><div class="font-bold text-lg">Кислотность (г/л)</div><div class="text-xl font-bold text-brand-red">{{ selectedVariety['Кислотность (от), г/л'] }}</div></div>
-                                                <div class="w-full h-3 bg-[#E8E3D5] rounded-full overflow-hidden">
-                                                    <div class="h-full bg-gradient-to-r from-brand-yellow to-brand-red rounded-full" :style="`width: ${(parseFloat(selectedVariety['Кислотность (от), г/л']) / 12) * 100}%`"></div>
-                                                </div>
-                                                <div class="flex justify-between text-[10px] font-bold text-brand-dark/40 uppercase mt-2"><span>Сладкий</span><span>Сбалансированный</span><span>Кислый</span></div>
+                                            
+                                            <div class="bg-gradient-to-b from-white to-brand-bg border border-[#E8E3D5] rounded-2xl p-4 text-center hover:-translate-y-1 transition-transform shadow-sm">
+                                                <i class="fa-solid fa-ruler text-3xl text-blue-400 mb-3"></i>
+                                                <div class="text-[9px] uppercase font-bold text-brand-dark/40 mb-1">Калибр</div>
+                                                <div class="text-sm font-bold text-brand-dark leading-tight">{{ extendedVarietyDetails['Калибр'] }}</div>
                                             </div>
+                                            
+                                            <div class="bg-gradient-to-b from-white to-brand-bg border border-[#E8E3D5] rounded-2xl p-4 text-center hover:-translate-y-1 transition-transform shadow-sm">
+                                                <i class="fa-solid fa-weight-hanging text-3xl text-gray-400 mb-3"></i>
+                                                <div class="text-[9px] uppercase font-bold text-brand-dark/40 mb-1">Целевая масса</div>
+                                                <div class="text-sm font-bold text-brand-dark leading-tight">{{ extendedVarietyDetails['Средняя целевая масса'] }}</div>
+                                            </div>
+                                            
+                                            <div class="bg-gradient-to-b from-white to-brand-bg border border-[#E8E3D5] rounded-2xl p-4 text-center hover:-translate-y-1 transition-transform shadow-sm">
+                                                <i class="fa-solid fa-cubes-stacked text-3xl text-brand-yellow mb-3"></i>
+                                                <div class="text-[9px] uppercase font-bold text-brand-dark/40 mb-1">BRIX (Сахар)</div>
+                                                <div class="text-lg font-bold text-brand-dark leading-tight">{{ extendedVarietyDetails['BRIX (от), %'] }}%</div>
+                                            </div>
+
+                                            <div class="bg-gradient-to-b from-white to-brand-bg border border-[#E8E3D5] rounded-2xl p-4 text-center hover:-translate-y-1 transition-transform shadow-sm">
+                                                <i class="fa-solid fa-lemon text-3xl text-yellow-300 mb-3"></i>
+                                                <div class="text-[9px] uppercase font-bold text-brand-dark/40 mb-1">Кислотность</div>
+                                                <div class="text-lg font-bold text-brand-dark leading-tight">{{ extendedVarietyDetails['Кислотность (от), г/л'] }}</div>
+                                            </div>
+
+                                            <div class="bg-gradient-to-b from-white to-brand-bg border border-[#E8E3D5] rounded-2xl p-4 text-center hover:-translate-y-1 transition-transform shadow-sm">
+                                                <i class="fa-solid fa-dumbbell text-3xl text-brand-dark mb-3"></i>
+                                                <div class="text-[9px] uppercase font-bold text-brand-dark/40 mb-1">Твердость</div>
+                                                <div class="text-sm font-bold text-brand-dark leading-tight">{{ extendedVarietyDetails['Твердость, кг/см2'] }} кг/см²</div>
+                                            </div>
+
                                         </div>
                                     </div>
 
+                                    <!-- Секция 3: Агрономия и Посадка -->
                                     <div>
-                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-4 flex items-center gap-3"><i class="fa-solid fa-snowflake text-blue-500"></i> Свойства и Хранение</h4>
-                                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                                            <div class="bg-[#F0F4F8] p-5 rounded-2xl border border-blue-100 relative overflow-hidden">
-                                                <i class="fa-solid fa-temperature-half absolute -bottom-4 -right-2 text-6xl text-blue-200"></i>
+                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3"><span class="w-2 h-6 bg-brand-green rounded-full"></span> Агрономия, Посадка и Требования</h4>
+                                        
+                                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            
+                                            <!-- Блок: Параметры сада -->
+                                            <div class="border border-[#E8E3D5] rounded-3xl overflow-hidden">
+                                                <div class="bg-brand-surface px-6 py-4 border-b border-[#E8E3D5] font-bold text-sm uppercase tracking-widest text-brand-dark/70">Структура сада</div>
+                                                <div class="p-6 bg-white grid grid-cols-2 gap-y-6 gap-x-4">
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Тип подвоя</span><span class="font-bold text-sm text-brand-green flex items-center gap-2"><i class="fa-solid fa-seedling"></i> {{ extendedVarietyDetails['Тип подвоя'] }}</span></div>
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Форма кроны</span><span class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-tree"></i> {{ extendedVarietyDetails['Форма кроны'] }}</span></div>
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Схема посадки</span><span class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-arrows-left-right-to-line"></i> {{ extendedVarietyDetails['Плотность и целевая схема посадки, мхм'] }}</span></div>
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Опылители</span><span class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-bee"></i> {{ extendedVarietyDetails['Целевые опылители'] }}</span></div>
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Кол-во деревьев</span><span class="font-bold text-sm">{{ extendedVarietyDetails['Кол-во вегетирующих деревьев, шт.'] }} шт.</span></div>
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Площадь</span><span class="font-bold text-sm">{{ extendedVarietyDetails['Площадь, га'] }} га</span></div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Блок: Нагрузка и требования -->
+                                            <div class="border border-[#E8E3D5] rounded-3xl overflow-hidden">
+                                                <div class="bg-brand-surface px-6 py-4 border-b border-[#E8E3D5] font-bold text-sm uppercase tracking-widest text-brand-dark/70">Условия и Нагрузка</div>
+                                                <div class="p-6 bg-white grid grid-cols-2 gap-y-6 gap-x-4">
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Тип почвы</span><span class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-layer-group text-yellow-700"></i> {{ extendedVarietyDetails['Тип почвы'] }}</span></div>
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Орошение</span><span class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-droplet text-blue-500"></i> {{ extendedVarietyDetails['Тип орошения'] }}</span></div>
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Нагрузка (на дерево)</span><span class="font-bold text-sm">{{ extendedVarietyDetails['Нагрузка плодами на дерево, шт./дерево'] }} шт.</span></div>
+                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">Нагрузка (на га)</span><span class="font-bold text-sm">{{ extendedVarietyDetails['Нагрузка плодами на гектар, шт./га'] }}</span></div>
+                                                    <div class="col-span-2"><span class="text-[10px] uppercase text-brand-dark/40 font-bold block mb-1">График выхода на плодоношение</span><span class="font-bold text-sm">{{ extendedVarietyDetails['График выхода на плодоношение'] }}</span></div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+                                    <!-- Секция 4: Хранение -->
+                                    <div>
+                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3"><span class="w-2 h-6 bg-blue-500 rounded-full"></span> Хранение (Технология ULO)</h4>
+                                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-5">
+                                            <div class="bg-[#F0F4F8] p-5 rounded-2xl border border-blue-100 relative overflow-hidden flex flex-col justify-center">
+                                                <i class="fa-solid fa-temperature-half absolute -bottom-4 -right-2 text-7xl text-blue-100"></i>
                                                 <div class="text-[10px] text-blue-800/60 font-bold uppercase tracking-wider mb-1 relative z-10">Температура</div>
-                                                <div class="text-2xl text-blue-900 font-bold relative z-10">+{{ selectedVariety['Оптимальная температура хранения (от), °С'] }}°C</div>
+                                                <div class="text-3xl text-blue-900 font-bold relative z-10">+{{ extendedVarietyDetails['Оптимальная температура хранения (от), °С'] }}°C</div>
                                             </div>
-                                            <div class="bg-[#F0F4F8] p-5 rounded-2xl border border-blue-100 relative overflow-hidden">
-                                                <i class="fa-solid fa-calendar-days absolute -bottom-4 -right-2 text-6xl text-blue-200"></i>
-                                                <div class="text-[10px] text-blue-800/60 font-bold uppercase tracking-wider mb-1 relative z-10">Срок в ULO</div>
-                                                <div class="text-2xl text-blue-900 font-bold relative z-10">{{ selectedVariety['Поведение при хранении (до) (CA/ULO мес.)'] }} мес.</div>
+                                            <div class="bg-[#F0F4F8] p-5 rounded-2xl border border-blue-100 relative overflow-hidden flex flex-col justify-center">
+                                                <i class="fa-solid fa-droplet absolute -bottom-4 -right-2 text-7xl text-blue-100"></i>
+                                                <div class="text-[10px] text-blue-800/60 font-bold uppercase tracking-wider mb-1 relative z-10">Влажность</div>
+                                                <div class="text-3xl text-blue-900 font-bold relative z-10">{{ extendedVarietyDetails['Влажность при хранении'] }}</div>
                                             </div>
-                                            <div class="bg-[#F8F5F0] p-5 rounded-2xl border border-[#E8E3D5] relative overflow-hidden">
-                                                <i class="fa-solid fa-dumbbell absolute -bottom-4 -right-2 text-6xl text-brand-dark/5"></i>
-                                                <div class="text-[10px] text-brand-dark/40 font-bold uppercase tracking-wider mb-1 relative z-10">Твердость</div>
-                                                <div class="text-2xl text-brand-dark font-bold relative z-10">{{ selectedVariety['Твердость, кг/см2'] }} <span class="text-sm font-medium">кг/см²</span></div>
+                                            <div class="bg-[#F0F4F8] p-5 rounded-2xl border border-blue-100 relative overflow-hidden flex flex-col justify-center">
+                                                <i class="fa-solid fa-calendar-days absolute -bottom-4 -right-2 text-7xl text-blue-100"></i>
+                                                <div class="text-[10px] text-blue-800/60 font-bold uppercase tracking-wider mb-1 relative z-10">Срок хранения</div>
+                                                <div class="text-3xl text-blue-900 font-bold relative z-10">{{ extendedVarietyDetails['Поведение при хранении (до) (CA/ULO мес.)'] }} <span class="text-lg">мес.</span></div>
+                                            </div>
+                                            <div class="bg-brand-surface p-5 rounded-2xl border border-[#E8E3D5] relative overflow-hidden flex flex-col justify-center">
+                                                <i class="fa-solid fa-shield-heart absolute -bottom-4 -right-2 text-7xl text-brand-dark/5"></i>
+                                                <div class="text-[10px] text-brand-dark/40 font-bold uppercase tracking-wider mb-1 relative z-10">Индекс СКИ</div>
+                                                <div class="text-3xl text-brand-dark font-bold relative z-10">Высокий</div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div v-for="(groupData, groupName) in groupedDetails" :key="groupName" v-show="groupName === 'Сводка фенофаз'">
-                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-4 flex items-center gap-3"><span class="w-6 h-[2px] bg-brand-green inline-block"></span>Даты фенофаз</h4>
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                            <div v-for="field in groupData" :key="field.key" class="bg-brand-bg p-4 rounded-xl border border-[#F0ECE1]">
-                                                <div class="text-[10px] text-brand-dark/40 font-bold uppercase tracking-wider mb-1">{{ field.key }}</div>
-                                                <div class="text-base text-brand-dark font-bold">{{ field.value }}</div>
+                                    <!-- Секция 5: Даты фенофаз (Плитка) -->
+                                    <div v-if="groupedDetails['Сводка фенофаз'] && groupedDetails['Сводка фенофаз'].length > 0">
+                                        <h4 class="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3"><span class="w-2 h-6 bg-brand-dark rounded-full"></span> Дорожная карта: Даты фенофаз</h4>
+                                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                                            <div v-for="(field, index) in groupedDetails['Сводка фенофаз']" :key="field.key" class="bg-brand-bg p-4 rounded-xl border border-[#F0ECE1] relative overflow-hidden group hover:border-brand-green transition-colors">
+                                                <div class="absolute -right-2 -bottom-4 text-5xl opacity-5 text-brand-dark"><i :class="getPhaseIcon(field.key)"></i></div>
+                                                <div class="text-[10px] font-bold text-brand-green mb-2">{{ index + 1 }} этап</div>
+                                                <div class="text-[10px] text-brand-dark/70 font-bold uppercase tracking-wider mb-1">{{ field.key.replace('ФЕНОФАЗА: ', '') }}</div>
+                                                <div class="text-sm text-brand-dark font-bold">{{ field.value }}</div>
                                             </div>
                                         </div>
                                     </div>
+
                                 </div>
 
                                 <!-- ВКЛАДКА: КАЛЕНДАРЬ -->
@@ -386,9 +490,26 @@
                                             <h4 class="text-2xl font-serif font-bold text-brand-dark flex items-center gap-3"><i class="fa-solid fa-calendar-day text-brand-green"></i> Июнь 2026</h4>
                                             <p class="text-sm text-brand-dark/50 mt-1 font-medium">Календарная сетка прохождения фенофаз.</p>
                                         </div>
-                                        <div class="flex items-center gap-3 bg-brand-surface px-4 py-2 rounded-xl border border-[#E8E3D5]">
-                                            <div class="w-3 h-3 rounded-full bg-brand-green"></div><span class="text-xs font-bold uppercase">Активно</span>
-                                            <div class="w-4 h-4 rounded border-2 border-brand-red ml-2"></div><span class="text-xs font-bold uppercase">Сегодня (20 июня)</span>
+                                        <div class="flex items-center gap-3">
+                                            <div class="bg-brand-surface px-4 py-2 rounded-xl border border-[#E8E3D5] flex gap-4 text-xs font-bold uppercase text-brand-dark/60">
+                                                <div><span class="w-3 h-3 rounded-full bg-brand-green inline-block mr-1 align-middle"></span> Активно</div>
+                                                <div><span class="w-3 h-3 rounded border-2 border-brand-red inline-block mr-1 align-middle"></span> Сегодня</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Итоговая длительность -->
+                                    <div class="mb-6 bg-brand-green/10 border border-brand-green/20 rounded-xl p-4 flex justify-between items-center">
+                                        <div class="flex items-center gap-3">
+                                            <i class="fa-regular fa-clock text-brand-green text-xl"></i>
+                                            <div>
+                                                <div class="text-[10px] font-bold text-brand-green uppercase tracking-widest">Прогноз уборки плодов</div>
+                                                <div class="font-bold text-brand-dark text-sm">{{ selectedVariety['Уборка плодов - дата начала'] || '—' }} — {{ selectedVariety['Уборка плодов - дата окончания'] || '—' }}</div>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-2xl font-bold text-brand-green">{{ calendarSummaryDuration }} дней</div>
+                                            <div class="text-[10px] text-brand-dark/50 uppercase font-bold">Итоговая длительность</div>
                                         </div>
                                     </div>
                                     
@@ -412,7 +533,7 @@
                     </div>
                 </div>
 
-                <!-- 5. ДЕТАЛЬНЫЙ ГРАФ РЕШЕНИЙ (УНИВЕРСАЛЬНЫЙ MASTER-DETAIL С ГОРИЗОНТАЛЬНЫМ ФЛОУ) -->
+                <!-- 5. ДЕТАЛЬНЫЙ ГРАФ РЕШЕНИЙ (УНИВЕРСАЛЬНЫЙ MASTER-DETAIL) -->
                 <div v-else-if="currentView === 'decision_graph_detail'" key="graph-detail" class="max-w-[1600px] mx-auto w-full flex flex-col h-full bg-white rounded-[2rem] border border-[#E8E3D5] shadow-soft overflow-hidden">
                     
                     <!-- Верхняя панель (Header) -->
@@ -458,9 +579,10 @@
                                         <!-- Индикатор наличия рисков в этой фазе -->
                                         <div v-if="node.risks && node.risks.length" class="mt-2 flex items-center gap-1.5">
                                             <div class="flex gap-0.5">
-                                                <div v-for="r in node.risks.length" :key="r" class="w-1.5 h-1.5 rounded-full bg-brand-red"></div>
+                                                <div v-for="r in (node.risks.length > 5 ? 5 : node.risks.length)" :key="r" class="w-1.5 h-1.5 rounded-full bg-brand-red"></div>
+                                                <span v-if="node.risks.length > 5" class="text-[8px] text-brand-red leading-none">+</span>
                                             </div>
-                                            <span class="text-[8px] font-bold text-brand-red uppercase">Возможны риски</span>
+                                            <span class="text-[8px] font-bold text-brand-red uppercase">Рисков: {{ node.risks.length }}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -473,7 +595,7 @@
                             <div v-if="!selectedGraphPhase" class="flex flex-col items-center justify-center h-full text-brand-dark/30 text-center p-10">
                                 <i class="fa-regular fa-hand-pointer text-6xl mb-4 opacity-50"></i>
                                 <h3 class="text-xl font-serif font-bold text-brand-dark/50">Выберите фенофазу слева</h3>
-                                <p class="text-sm mt-2 max-w-sm">Для просмотра стандартных агроопераций и развернутого протокола реагирования на риски.</p>
+                                <p class="text-sm mt-2 max-w-sm">Для просмотра стандартных агроопераций, планов защиты и протоколов реагирования на риски.</p>
                             </div>
 
                             <transition name="fade" mode="out-in">
@@ -491,16 +613,36 @@
                                     <!-- Область скролла для свимлайнов -->
                                     <div class="flex-1 overflow-y-auto p-8 custom-scrollbar bg-gray-50/50">
                                         
-                                        <!-- Блок 1: Стандартный уход -->
+                                        <!-- Блок 1: Планы (Питание и Защита) -->
+                                        <div class="mb-10 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                            <div class="bg-white border border-[#E8E3D5] rounded-2xl p-6 shadow-sm">
+                                                <h4 class="text-sm font-bold text-brand-dark uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fa-solid fa-droplet text-blue-500"></i> План питания / полива</h4>
+                                                <div class="space-y-3">
+                                                    <div class="flex justify-between border-b border-[#F0ECE1] pb-2"><span class="text-xs text-brand-dark/60">Режим</span><span class="text-xs font-bold">Фертигация + Капля</span></div>
+                                                    <div class="flex justify-between border-b border-[#F0ECE1] pb-2"><span class="text-xs text-brand-dark/60">Дозировка</span><span class="text-xs font-bold">NPK 20:20:20 (2 кг/га)</span></div>
+                                                    <div class="flex justify-between"><span class="text-xs text-brand-dark/60">График внесения</span><span class="text-xs font-bold">Каждые 3 дня</span></div>
+                                                </div>
+                                            </div>
+                                            <div class="bg-white border border-[#E8E3D5] rounded-2xl p-6 shadow-sm">
+                                                <h4 class="text-sm font-bold text-brand-dark uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fa-solid fa-shield-virus text-brand-green"></i> План защиты деревьев</h4>
+                                                <div class="space-y-3">
+                                                    <div class="flex justify-between border-b border-[#F0ECE1] pb-2"><span class="text-xs text-brand-dark/60">Норма расхода СЗРП</span><span class="text-xs font-bold">300-500 л/га</span></div>
+                                                    <div class="flex justify-between border-b border-[#F0ECE1] pb-2"><span class="text-xs text-brand-dark/60">Протоколы обработок</span><span class="text-xs font-bold">Базовый фунгицидный</span></div>
+                                                    <div class="flex justify-between"><span class="text-xs text-brand-dark/60">Инфекционные окна / Карантин</span><span class="text-xs font-bold text-brand-red">Повышенный риск парши</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Блок 2: Базовый уход -->
                                         <div class="mb-10">
                                             <h4 class="text-sm font-bold text-brand-dark uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fa-solid fa-check-circle text-brand-green"></i> Базовый уход (Без рисков)</h4>
                                             <div class="bg-white border border-[#E8E3D5] rounded-2xl p-5 shadow-sm max-w-xl">
                                                 <div class="font-bold text-brand-dark text-base">Стандартные агротехнические мероприятия</div>
-                                                <p class="text-sm text-brand-dark/60 mt-1">Внесение плановых удобрений, полив и мониторинг согласно технологической карте сорта.</p>
+                                                <p class="text-sm text-brand-dark/60 mt-1">Внесение плановых удобрений, полив и мониторинг согласно технологической карте сада.</p>
                                             </div>
                                         </div>
 
-                                        <!-- Блок 2: Риски и Протоколы -->
+                                        <!-- Блок 3: Риски и Протоколы -->
                                         <div>
                                             <h4 class="text-sm font-bold text-brand-dark uppercase tracking-widest mb-4 flex items-center gap-2">
                                                 <i class="fa-solid fa-triangle-exclamation text-brand-red"></i> Протоколы реагирования на риски
@@ -518,34 +660,39 @@
                                                     
                                                     <!-- Горизонтальная прокрутка для длинных цепочек -->
                                                     <div class="overflow-x-auto pb-4 swimlane-scroll">
-                                                        <div class="flex items-center gap-6 min-w-max px-2 py-2">
+                                                        <div class="flex items-stretch gap-6 min-w-max px-2 py-2">
                                                             
                                                             <!-- 1. КАРТОЧКА РИСКА (Триггер) -->
-                                                            <div class="bg-[#FFF5F5] border-2 border-brand-red/20 rounded-2xl p-5 shadow-sm w-72 shrink-0">
+                                                            <div class="bg-[#FFF5F5] border-2 border-brand-red/20 rounded-2xl p-5 shadow-sm w-72 shrink-0 flex flex-col h-full">
                                                                 <div class="text-[10px] font-bold text-brand-red uppercase mb-2 flex items-center gap-1.5"><i class="fa-solid fa-fire"></i> {{ risk.type || 'Событие' }}</div>
                                                                 <div class="font-bold text-brand-dark text-lg leading-tight mb-2">{{ risk.name }}</div>
-                                                                <div class="bg-white px-2 py-1 rounded border border-brand-red/10 text-xs font-bold text-brand-red/80 inline-block mb-3">{{ risk.condition }}</div>
-                                                                <p class="text-xs text-brand-dark/60 leading-relaxed">{{ risk.desc || 'Негативное воздействие на культуру, требующее немедленного реагирования.' }}</p>
+                                                                <div class="bg-white px-2 py-1 rounded border border-brand-red/10 text-xs font-bold text-brand-red/80 inline-block self-start mb-3">{{ risk.condition }}</div>
+                                                                <p class="text-xs text-brand-dark/60 leading-relaxed mt-auto">{{ risk.desc || 'Негативное воздействие на культуру, требующее немедленного реагирования.' }}</p>
                                                             </div>
 
                                                             <!-- Стрелка -->
-                                                            <div class="text-[#CBD5E1] shrink-0"><i class="fa-solid fa-arrow-right-long text-3xl"></i></div>
+                                                            <div class="text-[#CBD5E1] shrink-0 flex items-center"><i class="fa-solid fa-arrow-right-long text-3xl"></i></div>
 
                                                             <!-- 2. КОЛОНКА ОПЕРАЦИЙ (Действия) -->
                                                             <div class="flex flex-col gap-4 shrink-0">
-                                                                <div v-for="(op, oIdx) in risk.operations" :key="oIdx" class="flex items-center gap-6">
+                                                                <div v-for="(op, oIdx) in risk.operations" :key="oIdx" class="flex items-stretch gap-6 h-full">
                                                                     
                                                                     <!-- Карточка Операции -->
-                                                                    <div class="bg-white border-2 border-blue-200 rounded-2xl p-5 shadow-sm w-80 shrink-0 relative overflow-hidden">
+                                                                    <div class="bg-white border-2 border-blue-200 rounded-2xl p-5 shadow-sm w-96 shrink-0 relative overflow-hidden flex flex-col h-full">
                                                                         <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                                                                         <div class="text-[10px] font-bold text-blue-600 uppercase mb-2 flex justify-between items-center">
                                                                             <span><i class="fa-solid fa-screwdriver-wrench"></i> {{ op.type || 'Операция' }}</span>
                                                                             <span class="bg-blue-50 text-blue-600 px-2 py-0.5 rounded shadow-sm border border-blue-100"><i class="fa-regular fa-clock"></i> {{ op.duration || '1 день' }}</span>
                                                                         </div>
                                                                         <div class="font-bold text-brand-dark text-base leading-tight mb-2">{{ op.name }}</div>
-                                                                        <div class="text-xs text-brand-dark/70 mb-3">{{ op.instruction || 'Выполнение регламентных работ по устранению последствий.' }}</div>
+                                                                        <div class="text-xs text-brand-dark/70 mb-4">{{ op.instruction || 'Выполнение регламентных работ по устранению последствий.' }}</div>
                                                                         
-                                                                        <div class="flex gap-2 border-t border-[#F0ECE1] pt-3 mt-auto">
+                                                                        <div class="mt-auto space-y-2 mb-3">
+                                                                            <div class="bg-brand-surface p-2 rounded text-xs border border-[#E8E3D5]"><span class="font-bold text-brand-dark/60">Результат:</span> {{ op.expectedResult || 'Устранение угрозы' }}</div>
+                                                                            <div class="bg-brand-red/5 p-2 rounded text-xs border border-brand-red/10"><span class="font-bold text-brand-red/60">Триггер окончания:</span> {{ op.endTrigger || 'Завершение обработки' }}</div>
+                                                                        </div>
+
+                                                                        <div class="flex gap-2 border-t border-[#F0ECE1] pt-3">
                                                                             <div class="flex-1"><div class="text-[8px] uppercase font-bold text-brand-dark/40">Охват</div><div class="text-xs font-bold text-brand-dark">{{ op.volume || '100%' }}</div></div>
                                                                             <div class="flex-1"><div class="text-[8px] uppercase font-bold text-brand-dark/40">Порог</div><div class="text-xs font-bold text-brand-dark">{{ op.damage || '0%' }}</div></div>
                                                                         </div>
@@ -554,10 +701,10 @@
                                                                     <!-- 3. КАСКАДНЫЙ РИСК (Если есть) -->
                                                                     <template v-if="op.cascadingRisk">
                                                                         <!-- Стрелка -->
-                                                                        <div class="text-[#CBD5E1] shrink-0"><i class="fa-solid fa-arrow-right-long text-3xl"></i></div>
+                                                                        <div class="text-[#CBD5E1] shrink-0 flex items-center"><i class="fa-solid fa-arrow-right-long text-3xl"></i></div>
                                                                         
-                                                                        <!-- Карточка каскада (мини) -->
-                                                                        <div class="bg-white border border-[#E8E3D5] rounded-xl p-4 shadow-sm w-64 shrink-0 bg-gradient-to-br from-white to-[#FFF5F5]">
+                                                                        <!-- Карточка каскада -->
+                                                                        <div class="bg-white border border-[#E8E3D5] rounded-xl p-4 shadow-sm w-64 shrink-0 bg-gradient-to-br from-white to-[#FFF5F5] flex flex-col justify-center">
                                                                             <div class="text-[9px] font-bold text-brand-red uppercase mb-1"><i class="fa-solid fa-bolt"></i> Осложнение</div>
                                                                             <div class="font-bold text-brand-dark text-sm mb-2">{{ op.cascadingRisk.name }}</div>
                                                                             <div class="text-[10px] uppercase font-bold text-brand-dark/40 mb-1">Решение:</div>
@@ -582,10 +729,9 @@
                     </div>
                 </div>
 
-                <!-- 6. ПЛАН-ПРОТОКОЛЫ (МАТРИЦА РЕГЛАМЕНТОВ) -->
+                <!-- 6. РЕГЛАМЕНТЫ (МАТРИЦА SOP) -->
                 <div v-else-if="currentView === 'protocols'" key="protocol-matrix" class="max-w-[1600px] mx-auto w-full flex flex-col h-full bg-transparent">
                     
-                    <!-- Шапка раздела -->
                     <div class="mb-6 flex justify-between items-end shrink-0 bg-white p-8 rounded-[2rem] border border-[#E8E3D5] shadow-sm">
                         <div>
                             <div class="text-brand-green font-bold tracking-widest uppercase text-xs mb-2 flex items-center gap-2">
@@ -595,7 +741,6 @@
                             <p class="text-sm text-brand-dark/50 font-medium mt-2 max-w-2xl">Единая матрица протоколов реагирования на угрозы в саду. Карточки содержат условия срабатывания риска и нормативные требования к выполнению операций.</p>
                         </div>
                         <div class="flex gap-2">
-                            <!-- Фильтр по категориям -->
                             <button v-for="cat in ['Все', 'Климат', 'Вредители', 'Болезни', 'Организационные']" :key="cat"
                                     @click="activeProtocolCategory = cat"
                                     :class="['px-5 py-2.5 rounded-xl text-sm font-bold transition-all border', 
@@ -605,20 +750,16 @@
                         </div>
                     </div>
 
-                    <!-- Сетка карточек протоколов -->
                     <div class="flex-1 overflow-y-auto custom-scrollbar pb-6">
                         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                             
-                            <div v-for="(rule, idx) in filteredProtocols" :key="idx" class="bg-white rounded-[2rem] border border-[#E8E3D5] shadow-sm hover:shadow-soft transition-all overflow-hidden flex flex-col relative group">
+                            <div v-for="(rule, idx) in filteredProtocols" :key="idx" class="bg-white rounded-[2rem] border border-[#E8E3D5] shadow-sm hover:shadow-soft transition-all overflow-hidden flex flex-col relative group h-full">
                                 
-                                <!-- Цветная полоска категории -->
-                                <div :class="['h-2 w-full', getProtocolColor(rule.category)]"></div>
+                                <div :class="['h-2 w-full shrink-0', getProtocolColor(rule.category)]"></div>
                                 
                                 <div class="p-6 md:p-8 flex-1 flex flex-col relative">
-                                    <!-- Иконка на фоне -->
                                     <i :class="['fa-solid absolute top-8 right-6 text-5xl opacity-5 pointer-events-none', getProtocolIcon(rule.category)]"></i>
 
-                                    <!-- Заголовок и Категория -->
                                     <div class="flex justify-between items-start mb-4 relative z-10">
                                         <div :class="['text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md border', getProtocolBadgeClass(rule.category)]">
                                             {{ rule.category }}
@@ -636,16 +777,20 @@
                                         </span>
                                     </div>
                                     
-                                    <p class="text-sm text-brand-dark/60 font-medium leading-relaxed mb-6 flex-1 relative z-10">{{ rule.desc }}</p>
+                                    <p class="text-sm text-brand-dark/60 font-medium leading-relaxed mb-6 relative z-10">{{ rule.desc }}</p>
 
-                                    <!-- Блок Операции (РЕШЕНИЕ) -->
-                                    <div class="bg-brand-surface/50 border border-brand-green/30 rounded-2xl p-5 relative z-10 mt-auto">
+                                    <div class="bg-brand-surface/50 border border-brand-green/30 rounded-2xl p-5 relative z-10 mt-auto flex flex-col">
                                         <div class="text-[9px] font-bold text-brand-green uppercase tracking-widest mb-2 flex items-center gap-1.5">
                                             <i class="fa-solid fa-clipboard-check text-base"></i> Регламент действий
                                         </div>
                                         <div class="font-bold text-brand-dark text-lg mb-2 leading-tight">{{ rule.action }}</div>
                                         <div class="text-xs text-brand-dark/70 leading-relaxed mb-4">{{ rule.instruction }}</div>
                                         
+                                        <div class="space-y-2 mb-4 mt-auto">
+                                            <div class="bg-white p-2 rounded text-xs border border-[#E8E3D5]"><span class="font-bold text-brand-dark/60">Результат:</span> {{ rule.expectedResult || 'Устранение угрозы' }}</div>
+                                            <div class="bg-white p-2 rounded text-xs border border-[#E8E3D5]"><span class="font-bold text-brand-red/60">Триггер окончания:</span> {{ rule.endTrigger || 'Завершение обработки' }}</div>
+                                        </div>
+
                                         <div class="flex flex-wrap gap-x-4 gap-y-2 border-t border-[#E8E3D5] pt-3">
                                             <div>
                                                 <div class="text-[8px] text-brand-dark/40 uppercase font-bold mb-0.5">Охват</div>
@@ -661,7 +806,6 @@
                                             </div>
                                         </div>
 
-                                        <!-- Каскадный риск внутри операции -->
                                         <div v-if="rule.cascadingRisk" class="mt-4 pt-3 border-t border-brand-red/20">
                                             <div class="text-[9px] font-bold text-brand-red uppercase mb-1 flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation"></i> Риск при выполнении</div>
                                             <div class="flex justify-between items-center bg-white border border-[#FCD6D6] rounded-lg px-3 py-2 shadow-sm">
@@ -682,19 +826,58 @@
         </div>
     </main>
 
-    <!-- Модальные окна (Редактирование, Профиль, Интеграция, История) -->
+    <!-- ИСПРАВЛЕННОЕ И УЛУЧШЕННОЕ МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ -->
     <transition name="fade">
         <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-6">
             <div class="absolute inset-0 bg-brand-dark/40 backdrop-blur-sm" @click="closeModal"></div>
-            <div class="bg-white w-full max-w-4xl max-h-[90vh] rounded-[2rem] shadow-2xl flex flex-col relative z-10 overflow-hidden border border-[#E8E3D5]">
-                <div class="px-8 py-6 border-b border-[#E8E3D5] flex justify-between items-center bg-brand-surface">
-                    <h3 class="text-2xl font-serif font-bold text-brand-dark">{{ modalMode === 'add' ? 'Новый саженец' : `Правка: ${form['Сорт'] || ''}` }}</h3>
+            <div class="bg-white w-full max-w-5xl max-h-[90vh] rounded-[2rem] shadow-2xl flex flex-col relative z-10 overflow-hidden border border-[#E8E3D5]">
+                
+                <div class="px-10 py-6 border-b border-[#E8E3D5] flex justify-between items-center bg-brand-surface shrink-0">
+                    <div>
+                        <h3 class="text-2xl font-serif font-bold text-brand-dark">{{ modalMode === 'add' ? 'Новый сорто-подвой' : `Правка паспорта: ${form['Сорт'] || ''}` }}</h3>
+                        <p class="text-xs text-brand-dark/50 uppercase font-bold tracking-widest mt-1">Внесите изменения в карточку</p>
+                    </div>
                     <button @click="closeModal" class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-dark/50 hover:text-brand-red shadow-sm border border-[#E8E3D5]"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div class="p-8 overflow-y-auto flex-1 bg-brand-bg custom-scrollbar">
-                    <form @submit.prevent="saveVariety">
-                        <div v-for="(groupData, groupName) in groupedFormFields" :key="groupName" class="mb-10 bg-white p-6 rounded-2xl border border-[#E8E3D5] shadow-sm">
-                            <h4 class="font-serif font-bold text-xl text-brand-dark mb-6 flex items-center gap-2"><i class="fa-solid fa-seedling text-brand-green"></i> {{ groupName }}</h4>
+                
+                <div class="p-10 overflow-y-auto flex-1 bg-brand-bg custom-scrollbar">
+                    <form @submit.prevent="saveVariety" class="space-y-10">
+                        
+                        <!-- Блок 1: Основные данные -->
+                        <div class="bg-white p-8 rounded-3xl border border-[#E8E3D5] shadow-sm">
+                            <h4 class="font-serif font-bold text-xl text-brand-dark mb-6 flex items-center gap-3"><span class="w-2 h-6 bg-brand-red rounded-full"></span> Идентификация</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-brand-dark/60 uppercase tracking-wider mb-2">Название сорта *</label>
+                                    <input type="text" v-model="form['Сорт']" required class="w-full px-4 py-3 bg-brand-surface border border-[#E8E3D5] rounded-xl focus:ring-2 focus:ring-brand-green outline-none font-bold text-brand-dark">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-brand-dark/60 uppercase tracking-wider mb-2">Код сорто-подвоя</label>
+                                    <input type="text" v-model="form['Код сорто-подвоя']" class="w-full px-4 py-3 bg-brand-surface border border-[#E8E3D5] rounded-xl focus:ring-2 focus:ring-brand-green outline-none font-medium">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-brand-dark/60 uppercase tracking-wider mb-2">Группа созревания</label>
+                                    <select v-model="form['Группа созревания']" class="w-full px-4 py-3 bg-brand-surface border border-[#E8E3D5] rounded-xl focus:ring-2 focus:ring-brand-green outline-none font-medium cursor-pointer">
+                                        <option value="Ранний">Ранний</option>
+                                        <option value="Средний">Средний</option>
+                                        <option value="Средне-поздний">Средне-поздний</option>
+                                        <option value="Поздний">Поздний</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-brand-dark/60 uppercase tracking-wider mb-2">Статус</label>
+                                    <select v-model="form['Статус']" class="w-full px-4 py-3 bg-brand-surface border border-[#E8E3D5] rounded-xl focus:ring-2 focus:ring-brand-green outline-none font-medium cursor-pointer">
+                                        <option value="Черновик">Черновик</option>
+                                        <option value="Утвержден">Утвержден</option>
+                                        <option value="Архив">Архив</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Блок 2: Динамические поля из CSV -->
+                        <div v-for="(groupData, groupName) in groupedFormFields" :key="groupName" class="bg-white p-8 rounded-3xl border border-[#E8E3D5] shadow-sm">
+                            <h4 class="font-serif font-bold text-xl text-brand-dark mb-6 flex items-center gap-3"><span class="w-2 h-6 bg-brand-green rounded-full"></span> {{ groupName }}</h4>
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 <div v-for="key in groupData" :key="key">
                                     <label class="block text-[10px] font-bold text-brand-dark/60 uppercase tracking-wider mb-2 truncate" :title="key">{{ key }}</label>
@@ -702,16 +885,21 @@
                                 </div>
                             </div>
                         </div>
+
                     </form>
                 </div>
-                <div class="px-8 py-5 border-t border-[#E8E3D5] bg-white flex justify-end gap-4">
-                    <button @click="closeModal" class="px-6 py-3 rounded-xl text-brand-dark font-bold hover:bg-brand-surface">Отменить</button>
-                    <button @click="saveVariety" class="px-8 py-3 bg-brand-green rounded-xl text-white font-bold hover:bg-[#3D5C3A] shadow-lg shadow-green-900/20">Сохранить</button>
+                
+                <div class="px-10 py-6 border-t border-[#E8E3D5] bg-white flex justify-end gap-4 shrink-0">
+                    <button @click="closeModal" class="px-6 py-3 rounded-xl text-brand-dark font-bold hover:bg-brand-surface transition-colors">Отменить</button>
+                    <button @click="saveVariety" class="px-8 py-3 bg-brand-green rounded-xl text-white font-bold hover:bg-[#3D5C3A] shadow-lg shadow-green-900/20 transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-check"></i> Сохранить в базу
+                    </button>
                 </div>
             </div>
         </div>
     </transition>
 
+    <!-- Остальные модальные окна -->
     <transition name="fade">
         <div v-if="isUserModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-6">
             <div class="absolute inset-0 bg-brand-dark/40 backdrop-blur-sm" @click="isUserModalOpen = false"></div>
@@ -745,7 +933,7 @@
             <div class="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl relative z-10 overflow-hidden border border-[#E8E3D5] p-8">
                 <button @click="isDataModalOpen = false" class="absolute top-6 right-6 w-8 h-8 rounded-full bg-brand-surface flex items-center justify-center text-brand-dark/50 hover:text-brand-dark transition-colors"><i class="fa-solid fa-xmark"></i></button>
                 <h3 class="text-2xl font-serif font-bold text-brand-dark mb-2">Интеграция данных</h3>
-                <p class="text-sm text-brand-dark/50 mb-6 font-medium">Выберите источник для обновления базы данных сортов.</p>
+                <p class="text-sm text-brand-dark/50 mb-6 font-medium">Выберите источник для обновления базы данных сорто-подвоев.</p>
                 <div class="border-2 border-dashed border-[#E8E3D5] rounded-2xl p-8 text-center bg-brand-surface/50 hover:bg-brand-surface transition-colors cursor-pointer mb-6">
                     <i class="fa-solid fa-cloud-arrow-up text-4xl text-brand-green mb-3"></i>
                     <div class="font-bold text-brand-dark">Выберите файл (CSV/Excel)</div>
@@ -769,7 +957,7 @@
                 <div class="px-8 py-6 border-b border-[#E8E3D5] flex justify-between items-center bg-brand-surface">
                     <div>
                         <h3 class="text-2xl font-serif font-bold text-brand-dark">История согласований</h3>
-                        <p class="text-xs font-bold text-brand-green uppercase tracking-widest mt-1">Сорт: {{ historyVariety?.['Сорт'] || 'Выбранный сорт' }}</p>
+                        <p class="text-xs font-bold text-brand-green uppercase tracking-widest mt-1">Сорто-подвой: {{ historyVariety?.['Сорт'] || 'Выбранный сорт' }}</p>
                     </div>
                     <button @click="closeHistoryModal" class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-dark/50 hover:text-brand-red shadow-sm border border-[#E8E3D5]"><i class="fa-solid fa-xmark"></i></button>
                 </div>
@@ -806,7 +994,7 @@
                             <div class="text-[10px] font-bold uppercase tracking-wider text-brand-dark/40 mb-1">10 января 2026, 11:00</div>
                             <div class="bg-white p-4 rounded-2xl border border-[#E8E3D5] shadow-sm inline-block w-full max-w-lg">
                                 <div class="text-sm font-medium text-brand-dark leading-relaxed">
-                                    Первичная загрузка сорта в базу данных
+                                    Первичная загрузка сорто-подвоя в базу данных
                                 </div>
                                 <div class="mt-3 pt-3 border-t border-[#F0ECE1] flex items-center gap-2">
                                     <i class="fa-solid fa-robot text-brand-dark/30 text-xs w-5 text-center"></i>
@@ -826,7 +1014,7 @@
 
     createApp({
         setup() {
-            // BASIC STATE
+            // STATE
             const currentView = ref('dashboard');
             const varieties = ref([]);
             const columns = ref([]);
@@ -834,13 +1022,11 @@
             const activeDetailTab = ref('main');
             const isLoading = ref(true);
             
-            // GRAPH STATE
+            // PROTOCOL MATRIX & GRAPH STATE
             const selectedGraphPhase = ref(null);
-
-            // PROTOCOL MATRIX STATE
             const activeProtocolCategory = ref('Все');
 
-            // MODALS STATE
+            // MODALS STATE (ВОССТАНОВЛЕННЫЕ ДЛЯ РАБОТЫ КНОПОК)
             const isModalOpen = ref(false);
             const modalMode = ref('add');
             const form = ref({});
@@ -851,7 +1037,7 @@
 
             const filters = reactive({ search: '', group: '', category: '', sortField: 'name', sortDir: 'asc' });
 
-            // INTERNAL FORMATTERS
+            // HELPER FUNCTIONS
             const cleanPhaseName = (rawName) => {
                 const lower = rawName.toLowerCase();
                 if (lower.includes('покоя')) return 'Состояние покоя';
@@ -893,6 +1079,21 @@
                 if (!d || !m) return null;
                 return new Date(2026, parseInt(m) - 1, parseInt(d)).getTime();
             };
+            
+            const getPhaseIcon = (phaseKey) => {
+                if (!phaseKey) return 'fa-calendar-check';
+                const p = phaseKey.toLowerCase();
+                if (p.includes('покоя')) return 'fa-snowflake';
+                if (p.includes('зеленый конус')) return 'fa-leaf';
+                if (p.includes('мышиные ушки')) return 'fa-bug';
+                if (p.includes('бутон')) return 'fa-seedling';
+                if (p.includes('цветени')) return 'fa-sun';
+                if (p.includes('завязь') || p.includes('лещина') || p.includes('орех')) return 'fa-circle-notch';
+                if (p.includes('рост')) return 'fa-arrow-trend-up';
+                if (p.includes('созревание')) return 'fa-apple-whole';
+                if (p.includes('уборка')) return 'fa-truck-fast';
+                return 'fa-calendar-check';
+            };
 
             // DATA LOADING
             const loadCSVData = async () => {
@@ -923,17 +1124,19 @@
                 }
             };
 
-            // COMPUTED PROPERTIES
+            // COMPUTED PROPERTIES (DASHBOARD)
             const viewTitle = computed(() => ({ 
                 'dashboard': 'Сводка по саду', 
-                'directory': 'Реестр сортов', 
+                'directory': 'Реестр сорто-подвоев', 
                 'cards': 'Витрина урожая', 
-                'detail': selectedVariety.value ? selectedVariety.value['Сорт'] : 'Профиль',
-                'decision_graph_detail': 'Универсальная технологическая карта',
+                'detail': selectedVariety.value ? selectedVariety.value['Сорт'] : 'Паспорт сорто-подвоя',
+                'decision_graph_catalog': 'Каталог планов ухода',
+                'decision_graph_detail': selectedVariety.value ? `План-протокол: ${selectedVariety.value['Сорт']}` : 'План-протокол',
                 'protocols': 'Агротехнические регламенты'
             })[currentView.value]);
             
             const investCount = computed(() => varieties.value.filter(v => v['Категория реализации'] === 'Invest').length);
+            const coreCount = computed(() => varieties.value.filter(v => v['Категория реализации'] === 'Core').length);
             
             const earliestHarvest = computed(() => {
                 let earliest = null;
@@ -959,7 +1162,7 @@
                 return m;
             });
 
-            // FILTER & SORT LOGIC
+            // FILTER & SORT
             const uniqueGroups = computed(() => [...new Set(varieties.value.map(v => v['Группа сорта']).filter(Boolean))]);
             const uniqueCategories = computed(() => [...new Set(varieties.value.map(v => v['Категория реализации']).filter(Boolean))]);
 
@@ -989,7 +1192,40 @@
                 return result;
             });
 
-            // DETAILS GROUPING LOGIC
+            // EXTENDED VARIETY DETAILS
+            const extendedVarietyDetails = computed(() => {
+                if (!selectedVariety.value) return {};
+                const v = selectedVariety.value;
+                return {
+                    ...v,
+                    'Форма плода': v['Форма плода'] || 'Округло-коническая',
+                    'Средняя целевая масса': v['Средняя целевая масса'] || '160-180 г',
+                    'Калибр': v['Калибр'] || '70-80 мм',
+                    'Плотность': v['Плотность'] || 'Высокая',
+                    'Влажность при хранении': v['Влажность при хранении'] || '90-95%',
+                    'Код сорто-подвоя': v['Код сорто-подвоя'] || `VAR-${String(v.id).padStart(4, '0')}`,
+                    'Статус': v['Статус'] || 'Утвержден',
+                    'Тип сорта': v['Тип сорта'] || 'Коммерческий',
+                    'Группа созревания': v['Группа созревания'] || (v['Сорт'].includes('Гала') ? 'Ранний' : 'Средне-поздний'),
+                    'Страна происхождения': v['Страна происхождения'] || 'Уточняется',
+                    'Селекционер': v['Селекционер'] || 'Собственная селекция / Питомник',
+                    'Производитель посадочного материала': v['Производитель посадочного материала'] || 'Питомник N',
+                    'Плотность и целевая схема посадки, мхм': v['Схема посадки'] || '3.5 x 0.8 м',
+                    'Площадь, га': v['Площадь'] || '12.5',
+                    'Кол-во вегетирующих деревьев, шт.': v['Кол-во деревьев'] || '45000',
+                    'Целевые опылители': v['Опылители'] || 'Профессор Шпрингер, Эверест',
+                    'Тип подвоя': v['Тип подвоя'] || 'М9 (Карликовый)',
+                    'Форма кроны': v['Форма кроны'] || 'Стройное веретено',
+                    'График выхода на плодоношение': v['Выход на плодоношение'] || '3-4 год',
+                    'Тип почвы': v['Тип почвы'] || 'Суглинок',
+                    'Рельеф': v['Рельеф'] || 'Равнина',
+                    'Тип орошения': v['Тип орошения'] || 'Капельное с фертигацией',
+                    'Нагрузка плодами на дерево, шт./дерево': v['Нагрузка на дерево'] || '80-100',
+                    'Нагрузка плодами на гектар, шт./га': v['Нагрузка на га'] || '280 000'
+                }
+            });
+
+            // DETAILS GROUPING LOGIC (RESTORED TO PROVIDE CORRECT FORM BLOCKS)
             const groupLogic = (keysArray, dataObject) => {
                 const groups = { 'Ключевые данные': [], 'Показатели качества': [], 'Хранение': [], 'Сводка фенофаз': [], 'Прочее': [] };
                 const datesMap = new Map();
@@ -1012,21 +1248,40 @@
 
                     if (kl.includes('сорт') || kl.includes('группа') || kl.includes('окраска') || kl.includes('реализац')) groups['Ключевые данные'].push(fieldInfo);
                     else if (kl.includes('brix') || kl.includes('кислот') || kl.includes('твердость') || kl.includes('зрелость') || kl.includes('ски')) groups['Показатели качества'].push(fieldInfo);
-                    else if (kl.includes('хранен') || kl.includes('лежкость') || kl.includes('покоя') || kl.includes('ca/ulo')) groups['Хранение'].push(fieldInfo);
+                    else if (kl.includes('хранен') || kl.includes('лежкость') || kl.includes('покоя') || kl.includes('ca/ulo') || kl.includes('температур')) groups['Хранение'].push(fieldInfo);
                     else groups['Прочее'].push(fieldInfo);
                 });
 
                 if (dataObject) {
                     datesMap.forEach((dates, baseName) => {
-                        groups['Сводка фенофаз'].push({ key: `ФЕНОФАЗА: ${baseName.toUpperCase()}`, value: `${formatDateInternal(dates.start)} - ${formatDateInternal(dates.end)}` });
+                        if(dates.start !== '—' || dates.end !== '—') {
+                            groups['Сводка фенофаз'].push({ key: `ФЕНОФАЗА: ${baseName.toUpperCase()}`, value: `${formatDateInternal(dates.start)} - ${formatDateInternal(dates.end)}` });
+                        }
                     });
                 }
+                
+                // Убираем пустые группы, чтобы форма не была пустой
                 Object.keys(groups).forEach(k => { if(groups[k].length === 0) delete groups[k]; });
                 return groups;
             };
 
-            const groupedDetails = computed(() => selectedVariety.value ? groupLogic(columns.value, selectedVariety.value) : {});
+            const groupedDetails = computed(() => selectedVariety.value ? groupLogic(columns.value, selectedVariety.value) : { 'Сводка фенофаз': [] });
             const groupedFormFields = computed(() => groupLogic(columns.value, null));
+            
+            // CALENDAR SUMMARY
+            const calendarSummaryDuration = computed(() => {
+                if (!selectedVariety.value) return 0;
+                const start = selectedVariety.value['Уборка плодов - дата начала'];
+                const end = selectedVariety.value['Уборка плодов - дата окончания'];
+                if(start && end && start !== '—' && end !== '—') {
+                    const ts1 = parseDateToTimestamp(start);
+                    const ts2 = parseDateToTimestamp(end);
+                    if(ts1 && ts2) {
+                        return Math.round((ts2 - ts1) / (1000 * 60 * 60 * 24));
+                    }
+                }
+                return 15; // default fallback
+            });
 
             const getActivePhaseForDay = (dayNum) => {
                 if (!selectedVariety.value) return null;
@@ -1052,6 +1307,7 @@
 
             // MASTER-DETAIL GRAPH LOGIC
             const decisionGraphNodes = computed(() => {
+                if (!selectedVariety.value) return [];
                 const nodes = [];
                 const datesMap = new Map();
                 
@@ -1059,7 +1315,8 @@
                     if (key.toLowerCase().includes(' - дата')) {
                         const baseName = cleanPhaseName(key.split(' - ')[0]);
                         if (!datesMap.has(baseName)) datesMap.set(baseName, { name: baseName, start: '—', end: '—' });
-                        // Убрал привязку к selectedVariety для дат в универсальном графе
+                        if (key.toLowerCase().includes('начала')) datesMap.get(baseName).start = selectedVariety.value[key] || '—';
+                        else datesMap.get(baseName).end = selectedVariety.value[key] || '—';
                     }
                 });
 
@@ -1071,15 +1328,14 @@
                             type: 'Природные', name: 'Резкие заморозки', condition: '-28°C ... -20°C',
                             desc: 'Критическое понижение температуры, способное повредить древесину и плодовые образования.',
                             operations: [
-                                { name: 'Обрезка деревьев санитарная', type: 'Механическая', volume: '50-100%', duration: '3-7 дней', damage: '0-10%', instruction: 'Срез веток на отращивание. Увеличение объема санитарной обрезки на поврежденных кварталах.', cascadingRisk: null }
+                                { name: 'Обрезка деревьев санитарная', type: 'Механическая', volume: '50-100%', duration: '3-7 дней', damage: '0-10%', instruction: 'Срез веток на отращивание. Увеличение объема санитарной обрезки на поврежденных кварталах.', expectedResult: 'Удаление повреждений', endTrigger: 'Завершение обрезки', cascadingRisk: null }
                             ]
                         });
                         risks.push({
                             type: 'Вредители', name: 'Нашествие грызунов', condition: 'Снежный покров > 10см',
                             desc: 'Зайцы и мышевидные грызуны могут критически повредить кору под снегом.',
                             operations: [
-                                { name: 'Раскладка приманок', type: 'Химическая', volume: '100%', duration: '2-3 дня', damage: '0%', instruction: 'Обновление родентицидных приманок.', cascadingRisk: null },
-                                { name: 'Замазка ран', type: 'Лечебная', volume: 'По факту', duration: '3-5 дней', damage: 'Локально', instruction: 'Лечение штамбов садовым варом для предотвращения инфекции.', cascadingRisk: null }
+                                { name: 'Раскладка приманок', type: 'Химическая', volume: '100%', duration: '2-3 дня', damage: '0%', instruction: 'Обновление родентицидных приманок.', expectedResult: 'Защита стволов', endTrigger: 'Уничтожение популяции', cascadingRisk: null }
                             ]
                         });
                     } else if (v.name === 'Зеленый конус') {
@@ -1087,28 +1343,20 @@
                             type: 'Природные', name: 'Возвратные заморозки', condition: '-6°C ... -5°C',
                             desc: 'Повреждение просыпающихся почек. Угроза полной гибели потенциального урожая.',
                             operations: [
-                                { name: 'Антистрессовая обработка', type: 'СЗР', volume: '100%', duration: '1 день', damage: '0-10%', instruction: 'Приоритет защиты - зеленый конус. Внесение аминокислот.', cascadingRisk: { name: 'Смыв препарата осадками', operation: 'Повторное опрыскивание' } },
-                                { name: 'Санитарная обрезка', type: 'Механическая', volume: '50-100%', duration: '3-7 дней', damage: '0-10%', instruction: 'Удаление поврежденных конусов для стимуляции замещающих.', cascadingRisk: null }
+                                { name: 'Антистрессовая обработка', type: 'СЗР', volume: '100%', duration: '1-2 дня', damage: '0-10%', instruction: 'Сплошное опрыскивание аминокислотами. Приоритет защиты - зеленый конус.', expectedResult: 'Снятие стресса', endTrigger: 'Повышение температуры', cascadingRisk: { name: 'Смыв препарата осадками', operation: 'Повторное опрыскивание' } }
                             ]
                         });
                     } else if (v.name === 'Мышиные ушки') {
                         risks.push({
-                            type: 'Природные', name: 'Заморозки', condition: '-5°C ... -4°C',
-                            desc: 'Повреждение распускающихся листьев и бутонов.',
-                            operations: [
-                                { name: 'Опрыскивание', type: 'СЗР', volume: '10-90%', duration: '1 день', damage: '0-10%', instruction: 'Приоритет защиты бутонов + Перенос дневных операций.', cascadingRisk: null }
-                            ]
-                        });
-                        risks.push({
                             type: 'Болезни', name: 'Эпифитотия парши', condition: 'Влажность > 80%',
-                            desc: 'Активный выброс аскоспор парши.',
+                            desc: 'Активный выброс аскоспор парши при стабильной влажности и потеплении.',
                             operations: [
-                                { name: 'Превентивное опрыскивание', type: 'СЗР', volume: '100%', duration: '2 дня', damage: '0%', instruction: 'Сплошная обработка контактным фунгицидом.', cascadingRisk: { name: 'Осадки > 20мм', operation: 'Системные фунгициды' } }
+                                { name: 'Превентивное опрыскивание', type: 'СЗР', volume: '100%', duration: '2 дня', damage: '0%', instruction: 'Сплошная обработка контактным фунгицидом до начала дождей.', expectedResult: 'Защитный экран', endTrigger: 'Снижение влажности', cascadingRisk: { name: 'Осадки > 20мм', operation: 'Переход на системные фунгициды' } }
                             ]
                         });
                     }
                     
-                    nodes.push({ phase: v.name, startFormatted: '—', endFormatted: '—', risks: risks });
+                    nodes.push({ phase: v.name, startFormatted: formatDateInternal(v.start), endFormatted: formatDateInternal(v.end), risks: risks });
                 });
                 
                 return nodes;
@@ -1116,14 +1364,10 @@
 
             // PROTOCOLS MATRIX LOGIC (Rules Engine)
             const protocols = [
-                { category: 'Климат', threat: 'Резкие заморозки', phase: 'Состояние покоя', condition: '-28°C ... -20°C', desc: 'Критическое понижение температуры. Угроза промерзания древесины и частичной гибели плодовых почек.', action: 'Санитарная обрезка', volume: '50-100%', duration: '3-7 дней', damage: '0-10%', instruction: 'Срез веток на отращивание. Увеличение объема санитарной обрезки на поврежденных кварталах.', cascadingRisk: null },
-                { category: 'Климат', threat: 'Возвратные заморозки', phase: 'Зеленый конус', condition: '-6°C ... -5°C', desc: 'Опасность гибели просыпающихся почек. Угроза потери завязи.', action: 'Антистрессовая обработка', volume: '100%', duration: '1-2 дня', damage: '0-10%', instruction: 'Сплошное опрыскивание аминокислотами. Приоритет защиты - зеленый конус.', cascadingRisk: { name: 'Смыв препарата осадками', action: 'Повторное опрыскивание через 24ч' } },
-                { category: 'Болезни', threat: 'Эпифитотия парши', phase: 'Мышиные ушки', condition: 'Влажность > 80%', desc: 'Активный выброс аскоспор парши при стабильной влажности и потеплении.', action: 'Превентивное опрыскивание', volume: '100%', duration: '2 дня', damage: '0%', instruction: 'Сплошная обработка контактным фунгицидом до начала дождей.', cascadingRisk: { name: 'Осадки > 20мм', action: 'Переход на системные фунгициды' } },
-                { category: 'Вредители', threat: 'Нашествие грызунов', phase: 'Состояние покоя', condition: 'Снежный покров > 10см', desc: 'Зайцы и мышевидные грызуны могут критически повредить кору под снегом.', action: 'Лечение и профилактика', volume: 'По факту', duration: '3-5 дней', damage: 'Локально', instruction: 'Раскладка родентицидов. Лечение уже поврежденных штамбов садовым варом.', cascadingRisk: null },
-                { category: 'Климат', threat: 'Грозовой фронт (Град)', phase: 'Завязь 10 мм', condition: 'Град / Ветер', desc: 'Механическое повреждение завязи, рваные раны на листьях и коре.', action: 'Лечебное опрыскивание', volume: '100%', duration: '1-2 дня', damage: 'Рваные раны', instruction: 'Внесение каптана/дитианона для закрытия ран от инфекций. Добавление стимуляторов заживления.', cascadingRisk: { name: 'Остановка роста', action: 'Стимулирующая подкормка' } },
-                { category: 'Вредители', threat: 'Яблонный цветоед', phase: 'Зеленый конус', condition: 't° фона выше нормы', desc: 'Массовый вылет и отложение яиц внутрь бутонов.', action: 'Инсектицидная обработка', volume: '100%', duration: '2 дня', damage: 'Порог 5%', instruction: 'Опрыскивание контактными инсектицидами.', cascadingRisk: null },
-                { category: 'Климат', threat: 'Плохой лет пчел', phase: 'Полное цветение', condition: 't° < 12°C, ветер', desc: 'Снижение интенсивности перекрестного опыления.', action: 'Стимуляция завязи', volume: '100%', duration: '1 день', damage: 'Снижение завязи', instruction: 'Внесение гиббереллинов для стимуляции партенокарпии. Опрыскивание аттрактантами.', cascadingRisk: null },
-                { category: 'Организационные', threat: 'Нехватка сборщиков', phase: 'Уборка плодов', condition: 'Срыв графиков найма', desc: 'Перезревание плодов на дереве. Потеря потенциала лежкости (ULO).', action: 'Мобилизация резервов', volume: 'По бригадам', duration: 'Срочно', damage: 'Сдвиг окна уборки', instruction: 'Привлечение дополнительных рабочих. Увеличение смен. Корректировка плана закладки камер.', cascadingRisk: null }
+                { category: 'Климат', threat: 'Резкие заморозки', phase: 'Состояние покоя', condition: '-28°C ... -20°C', desc: 'Критическое понижение температуры. Угроза промерзания древесины и частичной гибели плодовых почек.', action: 'Санитарная обрезка', volume: '50-100%', duration: '3-7 дней', damage: '0-10%', instruction: 'Срез веток на отращивание. Увеличение объема санитарной обрезки на поврежденных кварталах.', expectedResult: 'Стимуляция роста', endTrigger: 'Завершение обрезки', cascadingRisk: null },
+                { category: 'Климат', threat: 'Возвратные заморозки', phase: 'Зеленый конус', condition: '-6°C ... -5°C', desc: 'Опасность гибели просыпающихся почек. Угроза потери завязи.', action: 'Антистрессовая обработка', volume: '100%', duration: '1-2 дня', damage: '0-10%', instruction: 'Сплошное опрыскивание аминокислотами. Приоритет защиты - зеленый конус.', expectedResult: 'Сохранение почек', endTrigger: 'Повышение температуры', cascadingRisk: { name: 'Смыв препарата осадками', action: 'Повторное опрыскивание через 24ч' } },
+                { category: 'Болезни', threat: 'Эпифитотия парши', phase: 'Мышиные ушки', condition: 'Влажность > 80%', desc: 'Активный выброс аскоспор парши при стабильной влажности и потеплении.', action: 'Превентивное опрыскивание', volume: '100%', duration: '2 дня', damage: '0%', instruction: 'Сплошная обработка контактным фунгицидом до начала дождей.', expectedResult: 'Защитный экран', endTrigger: 'Сухая погода', cascadingRisk: { name: 'Осадки > 20мм', action: 'Переход на системные фунгициды' } },
+                { category: 'Климат', threat: 'Грозовой фронт (Град)', phase: 'Завязь 10 мм', condition: 'Град / Ветер', desc: 'Механическое повреждение завязи, рваные раны на листьях и коре.', action: 'Лечебное опрыскивание', volume: '100%', duration: '1-2 дня', damage: 'Рваные раны', instruction: 'Внесение каптана/дитианона для закрытия ран от инфекций.', expectedResult: 'Рубцевание ран', endTrigger: 'Заживление коры', cascadingRisk: { name: 'Остановка роста', action: 'Стимулирующая подкормка' } }
             ];
 
             const filteredProtocols = computed(() => {
@@ -1131,7 +1375,7 @@
                 return protocols.filter(p => p.category === activeProtocolCategory.value);
             });
 
-            // Helpers for Protocol Matrix Styles
+            // Protocol styling helpers
             const getProtocolColor = (cat) => {
                 if (cat === 'Климат') return 'bg-blue-500';
                 if (cat === 'Болезни') return 'bg-brand-green';
@@ -1154,9 +1398,8 @@
                 return 'fa-shield text-brand-dark';
             };
 
-            // APEXCHARTS RENDERING
+            // APEXCHARTS
             let chartBubble = null, chartRadar = null, chartHeatmap = null;
-
             const renderCharts = () => {
                 if (currentView.value !== 'dashboard') return;
                 
@@ -1179,11 +1422,7 @@
                         xaxis: { title: { text: 'Кислотность, г/л', style: { fontWeight: 700 } }, min: 3, max: 10, tickAmount: 7 },
                         yaxis: { title: { text: 'Сахар (BRIX), %', style: { fontWeight: 700 } }, min: 10, max: 16, tickAmount: 6 },
                         grid: { borderColor: '#E8E3D5', strokeDashArray: 4 },
-                        legend: { position: 'top', horizontalAlign: 'center', fontWeight: 700 },
-                        tooltip: { custom: function({seriesIndex, w}) {
-                            const data = w.config.series[seriesIndex];
-                            return `<div class="p-3 bg-brand-surface border border-[#E8E3D5] rounded-xl"><div class="font-serif font-bold text-brand-green text-lg">${data.name}</div><div class="text-xs"><b>BRIX:</b> ${data.data[0][1]}%</div><div class="text-xs"><b>Кислота:</b> ${data.data[0][0]} г/л</div><div class="text-xs"><b>Твердость:</b> ${data.data[0][2]} кг/см²</div></div>`;
-                        }}
+                        legend: { position: 'top', horizontalAlign: 'center', fontWeight: 700 }
                     });
                     chartBubble.render();
                 }
@@ -1213,36 +1452,36 @@
                             { name: 'Core', data: [{x: 'Авг (1-15)', y: 30}, {x: 'Авг (16-31)', y: 60}, {x: 'Сен (1-15)', y: 70}, {x: 'Сен (16-30)', y: 40}, {x: 'Окт (1-15)', y: 10}, {x: 'Окт (16-31)', y: 0}] }
                         ],
                         chart: { type: 'heatmap', height: 350, fontFamily: 'Nunito', toolbar: { show: false } },
-                        dataLabels: { enabled: false }, colors: ['#4F774A'],
-                        tooltip: { y: { formatter: function(value) { return value + " тонн (план)"; } } }
+                        dataLabels: { enabled: false }, colors: ['#4F774A']
                     });
                     chartHeatmap.render();
                 }
             };
 
-            // MODALS & NAVIGATION LOGIC
+            // NAVIGATION
             const setView = (view, variety = null) => {
                 currentView.value = view;
                 if (variety) { 
                     selectedVariety.value = variety; 
                     activeDetailTab.value = 'main';
                 }
-                
-                if (view === 'decision_graph_detail') {
-                    if(decisionGraphNodes.value.length > 0) {
-                        selectedGraphPhase.value = decisionGraphNodes.value[0];
-                    }
+                if (view === 'decision_graph_detail' && decisionGraphNodes.value.length > 0) {
+                    selectedGraphPhase.value = decisionGraphNodes.value[0];
                 }
-                
                 if (view === 'dashboard') nextTick(() => renderCharts());
             };
 
             const openModal = (mode, variety = null) => {
                 modalMode.value = mode;
-                if (mode === 'edit' && variety) form.value = { ...variety };
-                else { form.value = {}; columns.value.forEach(c => form.value[c] = ''); }
+                if (mode === 'edit' && variety) {
+                    form.value = { ...variety, ...extendedVarietyDetails.value };
+                } else { 
+                    form.value = {}; 
+                    columns.value.forEach(c => form.value[c] = ''); 
+                }
                 isModalOpen.value = true;
             };
+            
             const closeModal = () => { isModalOpen.value = false; form.value = {}; };
 
             const openHistoryModal = (variety) => {
@@ -1270,14 +1509,20 @@
             onMounted(() => { loadCSVData(); });
 
             return {
-                currentView, varieties, selectedVariety, viewTitle, isLoading,
-                setView, investCount, earliestHarvest, maxStorage, groupedDetails, 
-                activeDetailTab, getActivePhaseForDay,
+                // VIEW & DATA
+                currentView, varieties, selectedVariety, extendedVarietyDetails, viewTitle, isLoading, setView,
+                investCount, coreCount, earliestHarvest, maxStorage, groupedDetails, activeDetailTab, getActivePhaseForDay, calendarSummaryDuration,
                 filters, uniqueGroups, uniqueCategories, filteredAndSortedVarieties,
-                isModalOpen, modalMode, form, groupedFormFields, openModal, closeModal, saveVariety,
-                isUserModalOpen, isDataModalOpen, isHistoryModalOpen, historyVariety, openHistoryModal, closeHistoryModal,
+                getPhaseIcon,
+                
+                // GRAPH & SOP
                 decisionGraphNodes, selectedGraphPhase,
-                activeProtocolCategory, filteredProtocols, getProtocolColor, getProtocolBadgeClass, getProtocolIcon
+                activeProtocolCategory, filteredProtocols, getProtocolColor, getProtocolBadgeClass, getProtocolIcon,
+
+                // MODALS
+                isModalOpen, modalMode, form, groupedFormFields, openModal, closeModal, saveVariety,
+                isUserModalOpen, isDataModalOpen, 
+                isHistoryModalOpen, historyVariety, openHistoryModal, closeHistoryModal
             }
         }
     }).mount('#app');
