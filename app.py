@@ -21,7 +21,7 @@ app.add_middleware(
 )
 
 # Настройки подключения к PostgreSQL
-DB_HOST = "192.168.0.4"
+DB_HOST = "176.124.217.84"
 DB_PORT = "5432"
 DB_NAME = "default_db"
 DB_USER = "gen_user"
