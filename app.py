@@ -1,10 +1,14 @@
-import sqlite3
+import os
+import urllib.parse
+from typing import Dict, Any
+
 import pandas as pd
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from sqlalchemy import create_engine, inspect
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from typing import Dict, Any
-import os
 
 app = FastAPI(title="Agro Platform API")
 
@@ -16,7 +20,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_FILE = "agro_platform.db"
+# Настройки подключения к PostgreSQL
+DB_HOST = "192.168.0.4"
+DB_PORT = "5432"
+DB_NAME = "default_db"
+DB_USER = "gen_user"
+DB_PASS = "ik^_Di:9);Wn>e"
+
+# Безопасное кодирование пароля для SQLAlchemy (защита от спецсимволов)
+encoded_pass = urllib.parse.quote_plus(DB_PASS)
+DB_URL = f"postgresql+psycopg2://{DB_USER}:{encoded_pass}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
 EXCEL_FILE = "База для Паспорта сорта_v4.xlsx"
 DECISION_FILE = "20260601_Паспорта_сортов_матрица_принятия_решений_v21_JP (2).xlsx"
 
@@ -24,26 +38,42 @@ def clean_nan(val):
     if pd.isna(val): return ""
     return str(val).strip()
 
+def get_db_connection():
+    """Создает и возвращает подключение к PostgreSQL"""
+    return psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASS,
+        cursor_factory=RealDictCursor
+    )
+
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    # SQLAlchemy Engine для загрузки Excel-данных через pandas
+    engine = create_engine(DB_URL)
+    inspector = inspect(engine)
+    
+    conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Таблица пользователей
+    # 1. Таблица пользователей (PostgreSQL использует SERIAL)
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        username TEXT UNIQUE,
-                        password TEXT,
-                        role TEXT)''')
+                        id SERIAL PRIMARY KEY,
+                        username VARCHAR(50) UNIQUE,
+                        password VARCHAR(255),
+                        role VARCHAR(50))''')
     
     cursor.execute("SELECT COUNT(*) FROM users")
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone()['count'] == 0:
         cursor.execute("INSERT INTO users (username, password, role) VALUES ('admin', 'admin', 'admin')")
         cursor.execute("INSERT INTO users (username, password, role) VALUES ('user', 'user', 'user')")
-        conn.commit()
+    
+    conn.commit()
+    conn.close()
 
     # 2. Таблица сортов (Паспорта)
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='varieties'")
-    if not cursor.fetchone():
+    if 'varieties' not in inspector.get_table_names():
         try:
             df_sort = pd.read_excel(EXCEL_FILE, sheet_name='Характеристики сорта', header=3)
             df_sort = df_sort.loc[:, ~df_sort.columns.str.contains('^Unnamed')]
@@ -62,16 +92,15 @@ def init_db():
             )
             
             df_merged = df_merged.fillna('')
-            df_merged.to_sql('varieties', conn, if_exists='replace', index=True, index_label='id')
+            df_merged.to_sql('varieties', engine, if_exists='replace', index=True, index_label='id')
+            print("БД сортов успешно инициализирована.")
         except Exception as e:
             print(f"Ошибка при инициализации БД сортов: {e}")
 
     # 3. Таблица Регламентов и Коэффициентов
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='protocols'")
-    if not cursor.fetchone():
+    if 'protocols' not in inspector.get_table_names():
         print("Синхронизация матрицы рисков и коэффициентов...")
         try:
-            # Парсинг Листа "Дерево решений" (Заголовки на 3-й строке)
             df_dec = pd.read_excel(DECISION_FILE, sheet_name='2. Дерево решений', header=2)
             protocols_list = []
             
@@ -91,9 +120,8 @@ def init_db():
                 })
             
             if protocols_list:
-                pd.DataFrame(protocols_list).to_sql('protocols', conn, if_exists='replace', index=False)
+                pd.DataFrame(protocols_list).to_sql('protocols', engine, if_exists='replace', index=False)
             
-            # Парсинг Листа "Коэффициенты" (Заголовки на 5-й строке)
             df_coef = pd.read_excel(DECISION_FILE, sheet_name='1.1 Коэффициенты корректировки', header=4)
             coef_list = []
             for i in range(len(df_coef)):
@@ -112,14 +140,12 @@ def init_db():
                     })
                     
             if coef_list:
-                pd.DataFrame(coef_list).to_sql('coefficients', conn, if_exists='replace', index=False)
+                pd.DataFrame(coef_list).to_sql('coefficients', engine, if_exists='replace', index=False)
                 
             print("Матрица решений успешно загружена.")
         except Exception as e:
             print(f"Ошибка при загрузке матрицы решений: {e}")
             
-    conn.close()
-
 @app.on_event("startup")
 def startup_event():
     init_db()
@@ -128,36 +154,38 @@ def startup_event():
 
 @app.post("/api/login")
 def login(creds: Dict[str, str]):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT username, role FROM users WHERE username=? AND password=?", (creds.get('username'), creds.get('password')))
+    # PostgreSQL использует %s вместо ?
+    cursor.execute("SELECT username, role FROM users WHERE username=%s AND password=%s", 
+                   (creds.get('username'), creds.get('password')))
     user = cursor.fetchone()
     conn.close()
-    if user: return {"username": user[0], "role": user[1]}
+    if user: return {"username": user['username'], "role": user['role']}
     raise HTTPException(status_code=401, detail="Неверные учетные данные")
 
 @app.get("/api/varieties")
 def get_varieties():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM varieties ORDER BY id DESC")
-    rows = [dict(row) for row in cursor.fetchall()]
+    cursor.execute('SELECT * FROM "varieties" ORDER BY "id" DESC')
+    rows = cursor.fetchall()
     conn.close()
-    return rows
+    return [dict(row) for row in rows]
 
 @app.post("/api/varieties")
 def create_variety(payload: Dict[str, Any]):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
     payload.pop('id', None)
     payload.pop('rootstocks', None) 
     columns = ", ".join([f'"{k}"' for k in payload.keys()])
-    placeholders = ", ".join(["?"] * len(payload))
+    placeholders = ", ".join(["%s"] * len(payload))
     try:
-        cursor.execute(f"INSERT INTO varieties ({columns}) VALUES ({placeholders})", list(payload.values()))
+        cursor.execute(f'INSERT INTO "varieties" ({columns}) VALUES ({placeholders})', list(payload.values()))
         conn.commit()
     except Exception as e:
+        conn.rollback()
         conn.close()
         raise HTTPException(status_code=500, detail=str(e))
     conn.close()
@@ -165,16 +193,17 @@ def create_variety(payload: Dict[str, Any]):
 
 @app.put("/api/varieties/{item_id}")
 def update_variety(item_id: int, payload: Dict[str, Any]):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
     payload.pop('id', None)
     payload.pop('rootstocks', None) 
-    set_clause = ", ".join([f'"{k}" = ?' for k in payload.keys()])
+    set_clause = ", ".join([f'"{k}" = %s' for k in payload.keys()])
     values = list(payload.values()) + [item_id]
     try:
-        cursor.execute(f'UPDATE varieties SET {set_clause} WHERE id = ?', values)
+        cursor.execute(f'UPDATE "varieties" SET {set_clause} WHERE "id" = %s', values)
         conn.commit()
     except Exception as e:
+        conn.rollback()
         conn.close()
         raise HTTPException(status_code=500, detail=str(e))
     conn.close()
@@ -182,30 +211,28 @@ def update_variety(item_id: int, payload: Dict[str, Any]):
 
 @app.delete("/api/varieties/{item_id}")
 def delete_variety(item_id: int):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM varieties WHERE id = ?", (item_id,))
+    cursor.execute('DELETE FROM "varieties" WHERE "id" = %s', (item_id,))
     conn.commit()
     conn.close()
     return {"status": "success"}
 
 @app.get("/api/protocols")
 def get_global_protocols():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM protocols")
-    rows = [dict(row) for row in cursor.fetchall()]
+    cursor.execute('SELECT * FROM "protocols"')
+    rows = cursor.fetchall()
     conn.close()
-    return rows
+    return [dict(row) for row in rows]
 
 @app.get("/api/varieties/{item_id}/plan")
 def get_variety_plan(item_id: int):
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT * FROM varieties WHERE id=?", (item_id,))
+    cursor.execute('SELECT * FROM "varieties" WHERE "id"=%s', (item_id,))
     variety = cursor.fetchone()
     if not variety:
         conn.close()
@@ -213,11 +240,11 @@ def get_variety_plan(item_id: int):
         
     combo_name = variety["Название сорто-подвоя"]
     
-    cursor.execute("SELECT operation, coefficient FROM coefficients WHERE combo_name=?", (combo_name,))
+    cursor.execute('SELECT operation, coefficient FROM "coefficients" WHERE combo_name=%s', (combo_name,))
     coeffs = {row['operation']: row['coefficient'] for row in cursor.fetchall() if row['coefficient'] > 0}
     
-    cursor.execute("SELECT * FROM protocols")
-    all_protocols = [dict(r) for r in cursor.fetchall()]
+    cursor.execute('SELECT * FROM "protocols"')
+    all_protocols = cursor.fetchall()
     conn.close()
     
     nodes_dict = {}
