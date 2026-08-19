@@ -29,7 +29,7 @@ DB_PASS = "ik^_Di:9);Wn>e"
 
 # Безопасное кодирование пароля для SQLAlchemy (защита от спецсимволов)
 encoded_pass = urllib.parse.quote_plus(DB_PASS)
-DB_URL = f"postgresql+psycopg2://{DB_USER}:{encoded_pass}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DB_URL = f"postgresql+psycopg2://{DB_USER}:{encoded_pass}@{DB_HOST}:{DB_PORT}/{DB_NAME}?sslmode=prefer"
 
 EXCEL_FILE = "База для Паспорта сорта_v4.xlsx"
 DECISION_FILE = "20260601_Паспорта_сортов_матрица_принятия_решений_v21_JP (2).xlsx"
@@ -46,6 +46,7 @@ def get_db_connection():
         database=DB_NAME,
         user=DB_USER,
         password=DB_PASS,
+        sslmode="prefer",
         cursor_factory=RealDictCursor
     )
 
