@@ -258,3 +258,9 @@ def serve_frontend():
     if os.path.exists("index.html"):
         return FileResponse("index.html")
     return {"error": "Файл index.html не найден"}
+
+@app.get("/app.js")
+def serve_js():
+    if os.path.exists("app.js"):
+        return FileResponse("app.js")
+    return {"error": "Файл app.js не найден"}
