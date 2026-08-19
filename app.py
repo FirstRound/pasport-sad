@@ -1,0 +1,169 @@
+import sqlite3
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from typing import Dict, Any
+import os
+
+app = FastAPI(title="Agro Platform API")
+
+# Настройка CORS для локальной разработки
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DB_FILE = "agro_platform.db"
+EXCEL_FILE = "База для Паспорта сорта_v4.xlsx"
+
+def init_db():
+    """Инициализация базы данных: Пользователи и Данные из Excel"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # 1. Инициализация таблицы пользователей
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE,
+                        password TEXT,
+                        role TEXT)''')
+    
+    # Создаем базовые аккаунты, если их нет
+    cursor.execute("SELECT COUNT(*) FROM users")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO users (username, password, role) VALUES ('admin', 'admin', 'admin')")
+        cursor.execute("INSERT INTO users (username, password, role) VALUES ('user', 'user', 'user')")
+        conn.commit()
+        print("Созданы базовые аккаунты: admin/admin и user/user")
+
+    # 2. Инициализация данных сортов (если таблица пуста)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='varieties'")
+    if not cursor.fetchone():
+        print("Инициализация сортов: чтение Excel файла...")
+        try:
+            df_sort = pd.read_excel(EXCEL_FILE, sheet_name='Характеристики сорта', header=3)
+            df_sort = df_sort.loc[:, ~df_sort.columns.str.contains('^Unnamed')]
+            df_sort = df_sort.dropna(subset=['Сорт'])
+
+            df_podvoy = pd.read_excel(EXCEL_FILE, sheet_name='Характеристики сорто-подвоя', header=2)
+            df_podvoy = df_podvoy.loc[:, ~df_podvoy.columns.str.contains('^Unnamed')]
+            df_podvoy = df_podvoy.dropna(subset=['Сорт', 'Подвой'])
+
+            df_merged = pd.merge(df_sort, df_podvoy, on='Сорт', how='left')
+            df_merged['Подвой'] = df_merged['Подвой'].fillna('—')
+            
+            df_merged['Название сорто-подвоя'] = df_merged.apply(
+                lambda row: f"{row['Сорт']} / {row['Подвой']}" if row['Подвой'] != '—' else row['Сорт'], 
+                axis=1
+            )
+            
+            df_merged = df_merged.fillna('')
+            df_merged.to_sql('varieties', conn, if_exists='replace', index=True, index_label='id')
+            print("Успешно! База данных agro_platform.db пополнена.")
+        except Exception as e:
+            print(f"Ошибка при инициализации БД сортов: {e}")
+    
+    conn.close()
+
+@app.on_event("startup")
+def startup_event():
+    init_db()
+
+# --- ЭНДПОИНТЫ API ---
+
+@app.post("/api/login")
+def login(creds: Dict[str, str]):
+    """Авторизация пользователя"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, role FROM users WHERE username=? AND password=?", (creds.get('username'), creds.get('password')))
+    user = cursor.fetchone()
+    conn.close()
+    
+    if user:
+        return {"username": user[0], "role": user[1]}
+    raise HTTPException(status_code=401, detail="Неверные учетные данные")
+
+@app.get("/api/varieties")
+def get_varieties():
+    """Получение всех сорто-подвоев"""
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM varieties ORDER BY id DESC")
+    rows = cursor.fetchall()
+    data = [dict(row) for row in rows]
+    conn.close()
+    return data
+
+@app.post("/api/varieties")
+def create_variety(payload: Dict[str, Any]):
+    """Создание нового сорто-подвоя"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    payload.pop('id', None)
+    payload.pop('rootstocks', None) 
+    
+    columns = ", ".join([f'"{k}"' for k in payload.keys()])
+    placeholders = ", ".join(["?"] * len(payload))
+    values = list(payload.values())
+    
+    try:
+        cursor.execute(f"INSERT INTO varieties ({columns}) VALUES ({placeholders})", values)
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    conn.close()
+    return {"status": "success", "message": "Сорт успешно добавлен"}
+
+@app.put("/api/varieties/{item_id}")
+def update_variety(item_id: int, payload: Dict[str, Any]):
+    """Обновление данных паспорта"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    payload.pop('id', None)
+    payload.pop('rootstocks', None) 
+    
+    set_clause = ", ".join([f'"{k}" = ?' for k in payload.keys()])
+    values = list(payload.values())
+    values.append(item_id)
+    
+    try:
+        query = f'UPDATE varieties SET {set_clause} WHERE id = ?'
+        cursor.execute(query, values)
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    conn.close()
+    return {"status": "success", "message": "Данные успешно обновлены"}
+
+@app.delete("/api/varieties/{item_id}")
+def delete_variety(item_id: int):
+    """Удаление сорта из базы"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM varieties WHERE id = ?", (item_id,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+    conn.close()
+    return {"status": "success", "message": "Сорт успешно удален"}
+
+# Раздача фронтенда
+@app.get("/")
+def serve_frontend():
+    if os.path.exists("index.html"):
+        return FileResponse("index.html")
+    return {"error": "Файл index.html не найден"}
