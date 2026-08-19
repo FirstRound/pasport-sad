@@ -620,34 +620,64 @@
 
                     <!-- 6. РЕГЛАМЕНТЫ (МАТРИЦА SOP) -->
                     <div v-else-if="currentView === 'protocols'" key="protocol-matrix" class="max-w-[1600px] mx-auto w-full flex flex-col h-full bg-transparent">
-                        <div class="mb-6 flex justify-between items-end shrink-0 bg-white p-8 rounded-[2rem] border border-[#E8E3D5] shadow-sm">
-                            <div>
-                                <div class="text-brand-green font-bold tracking-widest uppercase text-xs mb-2 flex items-center gap-2"><i class="fa-solid fa-clipboard-list"></i> Исполнение</div>
-                                <h2 class="text-3xl font-serif font-bold text-brand-dark">Агротехнические регламенты (SOP)</h2>
-                            </div>
-                            <div class="flex gap-2">
-                                <button v-for="cat in ['Все', 'Климат', 'Вредители', 'Болезни']" :key="cat" @click="activeProtocolCategory = cat" :class="['px-5 py-2.5 rounded-xl text-sm font-bold transition-all border', activeProtocolCategory === cat ? 'bg-brand-green text-white border-brand-green shadow-md' : 'bg-brand-surface text-brand-dark/60 border-transparent hover:border-[#E8E3D5]']">{{ cat }}</button>
-                            </div>
-                        </div>
+                        <div class="mb-4 md:mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center shrink-0 bg-white p-4 md:p-8 rounded-2xl md:rounded-[2rem] border border-[#E8E3D5] shadow-sm gap-3 md:gap-4">
+    <div class="w-full lg:w-auto">
+        <div class="text-brand-green font-bold tracking-widest uppercase text-[10px] md:text-xs mb-1 flex items-center gap-2">
+            <i class="fa-solid fa-clipboard-list"></i> Исполнение
+        </div>
+        <h2 class="text-xl md:text-3xl font-serif font-bold text-brand-dark leading-tight">Агротехнические регламенты</h2>
+    </div>
+    
+    <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 md:gap-3 w-full lg:w-auto mt-1 lg:mt-0">
+        <!-- Фильтр по Фенофазам (Компактный на мобильных) -->
+        <select v-model="activeProtocolPhase" class="w-full sm:w-auto px-3 py-2 md:px-4 md:py-2.5 bg-brand-surface border border-[#E8E3D5] rounded-xl outline-none font-bold text-xs md:text-sm text-brand-dark/70 hover:border-brand-green cursor-pointer appearance-none">
+            <option value="Все">Все фенофазы</option>
+            <option v-for="phase in uniquePhases" :key="phase" :value="phase">{{ phase }}</option>
+        </select>
+        
+        <div class="h-8 w-px bg-[#E8E3D5] hidden lg:block"></div>
+        
+        <!-- Фильтр по категориям (Сетка на мобильных) -->
+        <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 md:gap-2 w-full sm:w-auto">
+            <button v-for="cat in ['Все', 'Климат', 'Вредители', 'Болезни']" :key="cat" @click="activeProtocolCategory = cat" 
+                :class="['px-2 py-1.5 md:px-5 md:py-2.5 rounded-xl text-[11px] sm:text-xs md:text-sm font-bold transition-all border text-center', 
+                activeProtocolCategory === cat ? 'bg-brand-green text-white border-brand-green shadow-md' : 'bg-brand-surface text-brand-dark/60 border-transparent hover:border-[#E8E3D5]']">
+                {{ cat }}
+            </button>
+        </div>
+    </div>
+</div>
+                        
                         <div class="flex-1 overflow-y-auto custom-scrollbar pb-6">
-                            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                <div v-for="(rule, idx) in filteredProtocols" :key="idx" class="bg-white rounded-[2rem] border border-[#E8E3D5] shadow-sm hover:shadow-soft transition-all overflow-hidden flex flex-col relative group h-full">
-                                    <div :class="['h-2 w-full shrink-0', getProtocolColor(rule.category)]"></div>
-                                    <div class="p-6 md:p-8 flex-1 flex flex-col relative">
-                                        <i :class="['fa-solid absolute top-8 right-6 text-5xl opacity-5 pointer-events-none', getProtocolIcon(rule.category)]"></i>
-                                        <div class="flex justify-between items-start mb-4 relative z-10"><div :class="['text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md border', getProtocolBadgeClass(rule.category)]">{{ rule.category }}</div></div>
-                                        <h3 class="text-2xl font-serif font-bold text-brand-dark leading-tight mb-2 relative z-10">{{ rule.threat }}</h3>
-                                        <div class="flex flex-wrap gap-2 mb-4 relative z-10">
-                                            <span class="bg-brand-bg border border-[#E8E3D5] text-brand-dark/70 text-[10px] font-bold uppercase px-2 py-1 rounded"><i class="fa-solid fa-map-pin mr-1 opacity-50"></i> {{ rule.phase }}</span>
+                            <div v-if="Object.keys(groupedFilteredProtocols).length === 0" class="text-center py-12 text-brand-dark/40 font-bold">
+                                Регламенты не найдены
+                            </div>
+                            
+                            <!-- Вывод карточек, сгруппированных по фенофазам -->
+                            <div v-for="(rules, phaseName) in groupedFilteredProtocols" :key="phaseName" class="mb-10 last:mb-0">
+                                <h3 class="text-xl font-serif font-bold text-brand-dark mb-5 flex items-center gap-3 pl-2">
+                                    <span class="w-8 h-8 rounded-full bg-brand-green/10 text-brand-green flex items-center justify-center text-sm shadow-sm border border-brand-green/20"><i :class="getPhaseIcon(phaseName)"></i></span>
+                                    {{ phaseName }}
+                                </h3>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                    <div v-for="(rule, idx) in rules" :key="idx" class="bg-white rounded-[2rem] border border-[#E8E3D5] shadow-sm hover:shadow-soft transition-all overflow-hidden flex flex-col relative group h-full">
+                                        <div :class="['h-2 w-full shrink-0', getProtocolColor(rule.category)]"></div>
+                                        <div class="p-6 md:p-8 flex-1 flex flex-col relative">
+                                            <i :class="['fa-solid absolute top-8 right-6 text-5xl opacity-5 pointer-events-none', getProtocolIcon(rule.category)]"></i>
+                                            <div class="flex justify-between items-start mb-4 relative z-10"><div :class="['text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md border', getProtocolBadgeClass(rule.category)]">{{ rule.category }}</div></div>
+                                            <h3 class="text-2xl font-serif font-bold text-brand-dark leading-tight mb-2 relative z-10">{{ rule.threat }}</h3>
+                                            <div class="flex flex-wrap gap-2 mb-4 relative z-10">
+                                                <span class="bg-brand-bg border border-[#E8E3D5] text-brand-dark/70 text-[10px] font-bold px-2 py-1 rounded shadow-sm"><i class="fa-solid fa-bolt text-brand-red mr-1 opacity-70"></i> Триггер: {{ rule.condition }}</span>
+                                            </div>
+                                            <p class="text-sm text-brand-dark/60 font-medium leading-relaxed mb-6 relative z-10">{{ rule.desc }}</p>
+                                            <div class="bg-brand-surface/50 border border-brand-green/30 rounded-2xl p-5 relative z-10 mt-auto flex flex-col"><div class="font-bold text-brand-dark text-lg mb-2 leading-tight">{{ rule.action }}</div></div>
                                         </div>
-                                        <p class="text-sm text-brand-dark/60 font-medium leading-relaxed mb-6 relative z-10">{{ rule.desc }}</p>
-                                        <div class="bg-brand-surface/50 border border-brand-green/30 rounded-2xl p-5 relative z-10 mt-auto flex flex-col"><div class="font-bold text-brand-dark text-lg mb-2 leading-tight">{{ rule.action }}</div></div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-
                 </transition>
             </div>
         </main>
