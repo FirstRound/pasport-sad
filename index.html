@@ -1,1118 +1,169 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Платформа управления садом | Клиент-Сервер</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/ru.js"></script>
-    
-    <script>
-        dayjs.locale('ru');
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Nunito', 'sans-serif'], serif: ['Playfair Display', 'serif'] },
-                    colors: { brand: { bg: '#FDFBF7', surface: '#F5F2E9', dark: '#2A362D', green: '#4F774A', red: '#D94B38', yellow: '#EAB308', blue: '#3B82F6' } },
-                    boxShadow: { 'soft': '0 10px 40px -10px rgba(42, 54, 45, 0.08)' }
-                }
-            }
-        }
-    </script>
-    
-    <style>
-        body { background-color: #FDFBF7; color: #2A362D; }
-        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
-        .fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(10px); }
-        .card-hover { transition: all 0.3s ease; }
-        .card-hover:hover { transform: translateY(-4px); box-shadow: 0 15px 35px -5px rgba(79, 119, 74, 0.15); border-color: #4F774A; }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #D5D0C5; border-radius: 10px; border: 2px solid #FDFBF7; }
-        ::-webkit-scrollbar-thumb:hover { background: #4F774A; }
-        .swimlane-scroll::-webkit-scrollbar { height: 6px; }
-        .swimlane-scroll::-webkit-scrollbar-thumb { background: #E8E3D5; border-radius: 10px; }
-    </style>
-</head>
-<body class="antialiased h-screen overflow-hidden selection:bg-brand-green selection:text-white">
+import sqlite3
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from typing import Dict, Any
+import os
 
-<div id="app" class="flex h-full">
+app = FastAPI(title="Agro Platform API")
 
-    <!-- СТРАНИЦА АВТОРИЗАЦИИ -->
-    <div v-if="!isAuthenticated" class="w-full h-full flex items-center justify-center bg-brand-surface relative overflow-hidden">
-        <div class="absolute -right-20 -bottom-20 opacity-5 text-[400px] text-brand-green pointer-events-none"><i class="fa-solid fa-leaf"></i></div>
+# Настройка CORS для локальной разработки
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DB_FILE = "agro_platform.db"
+EXCEL_FILE = "База для Паспорта сорта_v4.xlsx"
+
+def init_db():
+    """Инициализация базы данных: Пользователи и Данные из Excel"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # 1. Инициализация таблицы пользователей
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE,
+                        password TEXT,
+                        role TEXT)''')
+    
+    # Создаем базовые аккаунты, если их нет
+    cursor.execute("SELECT COUNT(*) FROM users")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO users (username, password, role) VALUES ('admin', 'admin', 'admin')")
+        cursor.execute("INSERT INTO users (username, password, role) VALUES ('user', 'user', 'user')")
+        conn.commit()
+        print("Созданы базовые аккаунты: admin/admin и user/user")
+
+    # 2. Инициализация данных сортов (если таблица пуста)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='varieties'")
+    if not cursor.fetchone():
+        print("Инициализация сортов: чтение Excel файла...")
+        try:
+            df_sort = pd.read_excel(EXCEL_FILE, sheet_name='Характеристики сорта', header=3)
+            df_sort = df_sort.loc[:, ~df_sort.columns.str.contains('^Unnamed')]
+            df_sort = df_sort.dropna(subset=['Сорт'])
+
+            df_podvoy = pd.read_excel(EXCEL_FILE, sheet_name='Характеристики сорто-подвоя', header=2)
+            df_podvoy = df_podvoy.loc[:, ~df_podvoy.columns.str.contains('^Unnamed')]
+            df_podvoy = df_podvoy.dropna(subset=['Сорт', 'Подвой'])
+
+            df_merged = pd.merge(df_sort, df_podvoy, on='Сорт', how='left')
+            df_merged['Подвой'] = df_merged['Подвой'].fillna('—')
+            
+            df_merged['Название сорто-подвоя'] = df_merged.apply(
+                lambda row: f"{row['Сорт']} / {row['Подвой']}" if row['Подвой'] != '—' else row['Сорт'], 
+                axis=1
+            )
+            
+            df_merged = df_merged.fillna('')
+            df_merged.to_sql('varieties', conn, if_exists='replace', index=True, index_label='id')
+            print("Успешно! База данных agro_platform.db пополнена.")
+        except Exception as e:
+            print(f"Ошибка при инициализации БД сортов: {e}")
+    
+    conn.close()
+
+@app.on_event("startup")
+def startup_event():
+    init_db()
+
+# --- ЭНДПОИНТЫ API ---
+
+@app.post("/api/login")
+def login(creds: Dict[str, str]):
+    """Авторизация пользователя"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, role FROM users WHERE username=? AND password=?", (creds.get('username'), creds.get('password')))
+    user = cursor.fetchone()
+    conn.close()
+    
+    if user:
+        return {"username": user[0], "role": user[1]}
+    raise HTTPException(status_code=401, detail="Неверные учетные данные")
+
+@app.get("/api/varieties")
+def get_varieties():
+    """Получение всех сорто-подвоев"""
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM varieties ORDER BY id DESC")
+    rows = cursor.fetchall()
+    data = [dict(row) for row in rows]
+    conn.close()
+    return data
+
+@app.post("/api/varieties")
+def create_variety(payload: Dict[str, Any]):
+    """Создание нового сорто-подвоя"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    payload.pop('id', None)
+    payload.pop('rootstocks', None) 
+    
+    columns = ", ".join([f'"{k}"' for k in payload.keys()])
+    placeholders = ", ".join(["?"] * len(payload))
+    values = list(payload.values())
+    
+    try:
+        cursor.execute(f"INSERT INTO varieties ({columns}) VALUES ({placeholders})", values)
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
         
-        <div class="bg-white p-10 rounded-[2rem] shadow-2xl w-full max-w-md border border-[#E8E3D5] relative z-10">
-            <div class="text-center mb-8">
-                <div class="w-16 h-16 rounded-full bg-brand-bg flex items-center justify-center text-brand-green text-3xl mx-auto shadow-md mb-4"><i class="fa-solid fa-leaf"></i></div>
-                <h1 class="font-serif text-3xl font-bold tracking-wide text-brand-dark leading-tight">Agro <span class="text-brand-yellow">Platform</span></h1>
-                <p class="text-sm text-brand-dark/50 mt-2 font-medium">Войдите в систему управления</p>
-            </div>
-
-            <form @submit.prevent="login" class="space-y-5">
-                <div>
-                    <label class="block text-[10px] font-bold text-brand-dark/60 uppercase tracking-wider mb-2">Логин</label>
-                    <input type="text" v-model="loginForm.username" required class="w-full px-5 py-3 bg-brand-bg border border-[#E8E3D5] rounded-xl focus:ring-2 focus:ring-brand-green outline-none font-bold text-brand-dark">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-brand-dark/60 uppercase tracking-wider mb-2">Пароль</label>
-                    <input type="password" v-model="loginForm.password" required class="w-full px-5 py-3 bg-brand-bg border border-[#E8E3D5] rounded-xl focus:ring-2 focus:ring-brand-green outline-none font-bold text-brand-dark">
-                </div>
-                <button type="submit" class="w-full py-4 mt-4 bg-brand-green rounded-xl text-white font-bold hover:bg-[#3D5C3A] transition-all shadow-lg flex justify-center items-center gap-2">
-                    <i class="fa-solid fa-arrow-right-to-bracket"></i> Войти
-                </button>
-            </form>
-            <div class="mt-6 text-center text-xs text-brand-dark/40 font-bold">
-                Демо-доступы: admin / admin (Правка) | user / user (Чтение)
-            </div>
-        </div>
-    </div>
-
-    <!-- ОСНОВНОЙ ИНТЕРФЕЙС (После логина) -->
-    <template v-else>
-        <aside class="w-72 bg-brand-dark flex flex-col z-20 shadow-2xl shrink-0 text-brand-bg rounded-r-[2rem] my-2 overflow-hidden relative">
-            <div class="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-bl-[100px] pointer-events-none"></div>
-            <div class="p-8 flex items-center gap-4">
-                <div class="w-12 h-12 rounded-full bg-brand-bg flex items-center justify-center text-brand-green text-2xl shadow-lg"><i class="fa-solid fa-leaf"></i></div>
-                <div><h1 class="font-serif text-xl font-bold tracking-wide leading-tight">Agro<br><span class="text-brand-yellow">Platform</span></h1></div>
-            </div>
-            <nav class="flex-1 px-5 py-4 space-y-2">
-                <button @click="setView('dashboard')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'dashboard', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'dashboard'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-chart-pie w-5"></i> Сводка по саду</button>
-                <button @click="setView('directory')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'directory', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'directory'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-seedling w-5"></i> Реестр сортов</button>
-                <button @click="setView('cards')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'cards', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'cards'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-apple-whole w-5"></i> Витрина урожая</button>
-                
-                <div class="w-full h-px bg-white/10 my-4"></div>
-                <div class="px-4 pb-2 text-[10px] font-bold text-white/30 uppercase tracking-widest">База знаний</div>
-
-                <button @click="setView('decision_graph_catalog')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView.includes('decision_graph'), 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': !currentView.includes('decision_graph')}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-diagram-project w-5"></i> План-протоколы</button>
-                <button @click="setView('protocols')" :class="{'bg-brand-green/20 text-brand-yellow font-bold': currentView === 'protocols', 'text-brand-bg/70 hover:bg-brand-bg/10 hover:text-white': currentView !== 'protocols'}" class="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all text-base"><i class="fa-solid fa-clipboard-list w-5"></i> Регламенты (SOP)</button>
-            </nav>
-
-            <div class="p-6 mt-auto border-t border-white/10 flex flex-col gap-5 relative z-10">
-                <div class="flex items-center justify-between p-2 -mx-2 rounded-xl">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-brand-green text-white flex items-center justify-center font-bold shadow-sm uppercase">{{ currentUser.username[0] }}</div>
-                        <div>
-                            <div class="text-white font-bold text-sm leading-tight capitalize">{{ currentUser.username }}</div>
-                            <div class="text-brand-yellow text-[10px] uppercase font-bold mt-0.5">Роль: {{ currentUser.role }}</div>
-                        </div>
-                    </div>
-                    <button @click="logout" class="text-white/50 hover:text-brand-red transition-colors" title="Выйти"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
-                </div>
-            </div>
-        </aside>
-
-        <main class="flex-1 flex flex-col min-w-0 bg-brand-bg relative">
-            <header class="px-10 py-6 flex justify-between items-end shrink-0 z-10">
-                <div>
-                    <p class="text-brand-green font-bold tracking-widest uppercase text-xs mb-1">Система управления</p>
-                    <h2 class="text-3xl font-serif font-bold text-brand-dark">{{ viewTitle }}</h2>
-                </div>
-            </header>
-
-            <div class="flex-1 overflow-y-auto px-10 pb-10 custom-scrollbar">
-                
-                <div v-if="isLoading" class="flex flex-col items-center justify-center h-full px-10">
-                    <div v-if="!loadError" class="text-center text-brand-green">
-                        <i class="fa-solid fa-network-wired fa-fade text-5xl mb-6 opacity-80"></i>
-                        <p class="font-bold tracking-wide text-lg">Подключение к API...</p>
-                        <p class="text-sm text-brand-dark/50 mt-2">Синхронизация с базой данных</p>
-                    </div>
-                    <div v-else class="bg-white p-10 rounded-[2rem] border border-[#E8E3D5] shadow-xl max-w-xl w-full text-center">
-                        <div class="w-20 h-20 bg-[#FFF5F5] text-brand-red rounded-full flex items-center justify-center text-3xl mx-auto mb-6"><i class="fa-solid fa-server"></i></div>
-                        <h3 class="text-2xl font-serif font-bold text-brand-dark mb-3">Ошибка подключения к API</h3>
-                        <p class="text-sm text-brand-dark/60 mb-6 leading-relaxed">
-                            Не удалось получить данные с сервера. Убедитесь, что бэкенд запущен (<b>uvicorn app:app --reload</b>) и доступен по адресу http://127.0.0.1:8000.
-                        </p>
-                        <button @click="loadApiData" class="bg-brand-green text-white px-8 py-4 rounded-xl font-bold hover:bg-[#3D5C3A] transition-all shadow-lg">Повторить попытку</button>
-                    </div>
-                </div>
-
-                <transition name="fade" mode="out-in" v-else>
-                    
-                    <!-- ДАШБОРД -->
-                    <div v-if="currentView === 'dashboard'" key="dashboard" class="space-y-8 max-w-[1600px] mx-auto">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6">
-                            <div class="bg-white p-6 rounded-[2rem] border border-[#E8E3D5] shadow-soft flex flex-col justify-between relative overflow-hidden">
-                                <i class="fa-solid fa-apple-whole absolute -bottom-4 -right-4 text-8xl text-brand-surface"></i>
-                                <div class="text-sm text-brand-dark/50 font-bold uppercase tracking-wider mb-2 relative z-10">Всего сортов<br>в базе</div>
-                                <div class="text-4xl font-serif font-bold text-brand-dark relative z-10">{{ varieties.length }}</div>
-                            </div>
-                            <div class="bg-brand-red text-white p-6 rounded-[2rem] shadow-soft flex flex-col justify-between">
-                                <div class="text-sm text-white/80 font-bold uppercase tracking-wider mb-2">Целевые<br>(Invest)</div>
-                                <div class="text-4xl font-serif font-bold">{{ investCount }}</div>
-                            </div>
-                            <div class="bg-blue-600 text-white p-6 rounded-[2rem] shadow-soft flex flex-col justify-between">
-                                <div class="text-sm text-white/80 font-bold uppercase tracking-wider mb-2">Основные<br>(Core)</div>
-                                <div class="text-4xl font-serif font-bold">{{ coreCount }}</div>
-                            </div>
-                            <div class="bg-brand-green text-white p-6 rounded-[2rem] shadow-soft flex flex-col justify-between">
-                                <div class="text-sm text-white/80 font-bold uppercase tracking-wider mb-2">Начало уборки<br>(Раннее)</div>
-                                <div class="text-4xl font-serif font-bold">{{ earliestHarvest }}</div>
-                            </div>
-                            <div class="bg-brand-yellow text-brand-dark p-6 rounded-[2rem] shadow-soft flex flex-col justify-between">
-                                <div class="text-sm text-brand-dark/60 font-bold uppercase tracking-wider mb-2">Макс. срок<br>хранения</div>
-                                <div class="text-4xl font-serif font-bold">{{ formatValue(maxStorage) }} <span class="text-xl">мес.</span></div>
-                            </div>
-                        </div>
-                        
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            <div class="bg-white p-8 rounded-[2rem] border border-[#E8E3D5] shadow-soft lg:col-span-2">
-                                <div class="flex justify-between items-center mb-2">
-                                    <h3 class="text-xl font-serif font-bold text-brand-dark">Вкусовая матрица</h3>
-                                    <span class="bg-brand-surface text-xs font-bold px-3 py-1 rounded-full text-brand-dark/50">BRIX / Кислотность / Твердость</span>
-                                </div>
-                                <div id="chart-bubble" class="-ml-2 min-h-[350px]"></div>
-                            </div>
-                            <div class="bg-white p-8 rounded-[2rem] border border-[#E8E3D5] shadow-soft">
-                                <h3 class="text-xl font-serif font-bold text-brand-dark mb-2">Объем по реализации</h3>
-                                <div id="chart-pie" class="min-h-[350px]"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- РЕЕСТР / ВИТРИНА / КАТАЛОГ -->
-                    <div v-else-if="currentView === 'directory' || currentView === 'cards' || currentView === 'decision_graph_catalog'" :key="currentView" class="max-w-[1600px] mx-auto flex flex-col h-full">
-                        <div class="bg-white p-5 rounded-[2rem] border border-[#E8E3D5] shadow-sm mb-6 flex flex-wrap gap-4 items-center shrink-0">
-                            <div class="relative w-full md:w-80">
-                                <i class="fa-solid fa-search absolute left-5 top-3.5 text-brand-dark/40"></i>
-                                <input type="text" v-model="filters.search" placeholder="Поиск сорта..." class="w-full pl-12 pr-4 py-3 bg-brand-surface border border-[#E8E3D5] rounded-2xl focus:ring-2 focus:ring-brand-green outline-none transition-colors">
-                            </div>
-                            <select v-model="filters.group" class="px-4 py-3 bg-brand-surface border border-[#E8E3D5] rounded-2xl outline-none font-bold text-brand-dark/70 hover:border-brand-green cursor-pointer appearance-none">
-                                <option value="">Все группы</option>
-                                <option v-for="g in uniqueGroups" :key="g" :value="g">{{ g }}</option>
-                            </select>
-                            
-                            <div class="w-px h-8 bg-[#E8E3D5] hidden md:block mx-2"></div>
-                            
-                            <button v-if="currentUser.role === 'admin' && currentView === 'directory'" @click="openModal('add')" class="px-6 py-3 bg-brand-green text-white rounded-2xl font-bold hover:bg-[#3D5C3A] transition-colors shadow-sm ml-auto flex items-center gap-2">
-                                <i class="fa-solid fa-plus"></i> Новый сорт
-                            </button>
-                        </div>
-
-                        <!-- ТАБЛИЦА -->
-                        <div v-if="currentView === 'directory'" class="bg-white rounded-[2rem] border border-[#E8E3D5] shadow-soft overflow-hidden flex-1 flex flex-col">
-                            <div class="overflow-x-auto custom-scrollbar">
-                                <table class="w-full text-left border-collapse whitespace-nowrap min-w-max">
-                                    <thead class="bg-brand-surface sticky top-0 z-10">
-                                        <tr class="text-brand-dark/50 text-xs font-bold uppercase tracking-widest border-b border-[#E8E3D5]">
-                                            <th class="px-6 py-5">Название сорта</th>
-                                            <th class="px-6 py-5">Доступные Подвои</th>
-                                            <th class="px-6 py-5">Группа / Реализация</th>
-                                            <th class="px-6 py-5">Кислота / Сахар (BRIX)</th>
-                                            <th class="px-6 py-5 text-right w-48">Управление</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y divide-[#F0ECE1] text-sm">
-                                        <tr v-for="v in filteredAndSortedVarieties" :key="v.id" class="hover:bg-brand-surface/30 transition-colors group">
-                                            <td class="px-6 py-4">
-                                                <div class="font-serif font-bold text-lg text-brand-dark cursor-pointer hover:text-brand-green" @click="setView('detail', v)">{{ v['Сорт'] }}</div>
-                                                <div class="text-xs text-brand-dark/50 max-w-[200px] truncate">{{ v['Покровная окраска'] || '—' }}</div>
-                                            </td>
-                                            <td class="px-6 py-4">
-                                                <div class="flex gap-1 flex-wrap max-w-[180px]">
-                                                    <span v-for="rs in v.rootstocks" :key="rs['Подвой']" class="bg-white border border-[#E8E3D5] text-[10px] font-bold px-2 py-0.5 rounded shadow-sm text-brand-green">{{ rs['Подвой'] }}</span>
-                                                </div>
-                                            </td>
-                                            <td class="px-6 py-4">
-                                                <div class="font-bold text-brand-dark">{{ v['Группа сорта'] || '-' }}</div>
-                                                <div class="text-xs text-brand-dark/50">{{ v['Категория реализации'] || '-' }}</div>
-                                            </td>
-                                            <td class="px-6 py-4">
-                                                <div class="flex gap-4">
-                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 block">Кислота</span><span class="font-bold">{{ formatValue(v['Кислотность (от), г/л']) }}</span></div>
-                                                    <div><span class="text-[10px] uppercase text-brand-dark/40 block text-brand-yellow">BRIX</span><span class="font-bold">{{ formatValue(v['BRIX (от), %']) }}</span></div>
-                                                </div>
-                                            </td>
-                                            <td class="px-6 py-4 text-right">
-                                                <div class="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button @click="setView('detail', v)" class="w-10 h-10 rounded-xl bg-white border border-[#E8E3D5] text-brand-green hover:bg-brand-green hover:text-white shadow-sm" title="Открыть паспорт"><i class="fa-solid fa-arrow-right"></i></button>
-                                                    <template v-if="currentUser.role === 'admin'">
-                                                        <button @click="openModal('edit', v)" class="w-10 h-10 rounded-xl bg-white border border-[#E8E3D5] text-brand-yellow hover:bg-brand-yellow hover:text-white shadow-sm" title="Редактировать"><i class="fa-solid fa-pen"></i></button>
-                                                        <button @click="deleteVariety(v)" class="w-10 h-10 rounded-xl bg-white border border-[#E8E3D5] text-brand-red hover:bg-brand-red hover:text-white shadow-sm" title="Удалить из БД"><i class="fa-solid fa-trash"></i></button>
-                                                    </template>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- ВИТРИНА -->
-                        <div v-else-if="currentView === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-6">
-                            <div v-for="v in filteredAndSortedVarieties" :key="v.id" @click="setView('detail', v)" class="bg-white border border-[#E8E3D5] rounded-[2rem] p-5 cursor-pointer card-hover flex flex-col h-full relative overflow-hidden group">
-                                <div class="absolute -right-6 -top-6 w-24 h-24 bg-brand-surface rounded-full group-hover:bg-brand-green/10 transition-colors z-0"></div>
-                                <div class="mb-4 relative z-10">
-                                    <h3 class="font-serif font-bold text-brand-dark text-2xl mb-1">{{ v['Сорт'] }}</h3>
-                                    <p class="text-xs text-brand-dark/50 font-medium line-clamp-2 leading-relaxed">{{ v['Покровная окраска'] }}</p>
-                                </div>
-                                <div class="mb-4 relative z-10 flex gap-2">
-                                    <span class="bg-brand-red/10 text-brand-red px-2 py-1 rounded-md text-[10px] font-bold"><i class="fa-solid fa-star mr-1"></i> {{ v['Категория сорта'] || 'Premium' }}</span>
-                                    <span class="bg-brand-dark text-white px-2 py-1 rounded-md text-[10px] font-bold"><i class="fa-solid fa-truck-fast mr-1"></i> {{ v['Категория реализации'] || 'Invest' }}</span>
-                                </div>
-                                <div class="mt-auto relative z-10 bg-brand-surface p-4 rounded-2xl border border-[#E8E3D5]">
-                                    <div class="grid grid-cols-2 gap-y-4 gap-x-2 text-xs">
-                                        <div class="flex items-center gap-2"><i class="fa-solid fa-flask text-brand-green w-4 text-center"></i><div><div class="text-[9px] text-brand-dark/40 uppercase font-bold">BRIX</div><div class="font-bold text-brand-dark">{{ formatValue(v['BRIX (от), %']) }}%</div></div></div>
-                                        <div class="flex items-center gap-2"><i class="fa-solid fa-lemon text-brand-yellow w-4 text-center"></i><div><div class="text-[9px] text-brand-dark/40 uppercase font-bold">Кисл.</div><div class="font-bold text-brand-dark">{{ formatValue(v['Кислотность (от), г/л']) }}</div></div></div>
-                                        <div class="flex items-center gap-2"><i class="fa-solid fa-dumbbell text-brand-dark/40 w-4 text-center"></i><div><div class="text-[9px] text-brand-dark/40 uppercase font-bold">Тверд.</div><div class="font-bold text-brand-dark">{{ formatValue(v['Твердость, кг/см2']) }}</div></div></div>
-                                        <div class="flex items-center gap-2"><i class="fa-solid fa-snowflake text-blue-400 w-4 text-center"></i><div><div class="text-[9px] text-brand-dark/40 uppercase font-bold">ULO</div><div class="font-bold text-brand-green">{{ formatValue(v['Поведение при хранении (до) (CA/ULO мес.)']) }}м</div></div></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- КАТАЛОГ ГРАФОВ -->
-                        <div v-else-if="currentView === 'decision_graph_catalog'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-6">
-                            <div v-for="v in filteredAndSortedVarieties" :key="'graph-' + v.id" @click="setView('decision_graph_detail', v)" class="bg-white border border-[#E8E3D5] rounded-[2rem] p-6 cursor-pointer card-hover flex flex-col h-full relative overflow-hidden group">
-                                <div class="absolute -right-6 -top-6 w-24 h-24 bg-brand-surface rounded-full group-hover:bg-brand-green/10 transition-colors z-0"></div>
-                                <div class="mb-4 relative z-10"><h3 class="font-serif font-bold text-brand-dark text-2xl mb-1">{{ v['Сорт'] }}</h3></div>
-                                <div class="relative z-10 flex-1 flex flex-col justify-center items-start">
-                                    <span class="inline-block bg-brand-green text-white text-[10px] font-bold uppercase px-3 py-1 rounded-full mb-3">{{ v['Группа сорта'] || 'Сорт' }}</span>
-                                    <div class="text-sm font-bold text-brand-dark/50 flex items-center gap-2 mt-auto"><i class="fa-solid fa-diagram-project"></i> Открыть план-протоколы</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 4. ДЕТАЛЬНАЯ КАРТОЧКА СОРТА -->
-                    <div v-else-if="currentView === 'detail' && selectedVariety" key="detail" class="max-w-[1400px] mx-auto w-full">
-                        
-                        <div class="mb-6 flex justify-between items-center">
-                            <button @click="setView('cards')" class="text-sm font-bold text-brand-green hover:text-brand-dark flex items-center gap-2 bg-white px-5 py-2 rounded-full border border-[#E8E3D5] shadow-sm">
-                                <i class="fa-solid fa-arrow-left"></i> Назад
-                            </button>
-                            <button v-if="currentUser.role === 'admin'" @click="openModal('edit', selectedVariety)" class="text-sm font-bold text-brand-yellow hover:text-brand-dark flex items-center gap-2 bg-white px-5 py-2 rounded-full border border-[#E8E3D5] shadow-sm">
-                                <i class="fa-solid fa-pen"></i> Редактировать (БД)
-                            </button>
-                        </div>
-
-                        <div class="bg-white rounded-[2rem] border border-[#E8E3D5] shadow-soft overflow-hidden">
-                            <div class="relative bg-gradient-to-br from-brand-surface to-[#E8E3D5] px-10 pt-12 pb-10 overflow-hidden">
-                                <div class="absolute -right-10 -bottom-20 opacity-[0.03] text-[350px] text-brand-dark"><i class="fa-solid fa-apple-whole"></i></div>
-                                <div class="relative z-10 flex justify-between items-end">
-                                    <div>
-                                        <div class="text-brand-red font-bold tracking-widest uppercase text-xs mb-3 flex items-center gap-2">
-                                            <i class="fa-solid fa-star"></i> {{ extendedVarietyDetails['Категория сорта'] || 'Сорт' }}
-                                        </div>
-                                        <h2 class="text-5xl font-serif font-bold text-brand-dark mb-3">{{ extendedVarietyDetails['Сорт'] }}</h2>
-                                        <p class="text-brand-dark/60 font-medium text-lg max-w-xl mb-4">{{ extendedVarietyDetails['Покровная окраска'] }}</p>
-                                        
-                                        <div class="flex flex-wrap gap-2">
-                                            <span class="bg-white/80 border border-[#D5D0C5] text-brand-dark px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm"><i class="fa-solid fa-layer-group text-yellow-700 mr-1"></i> {{ extendedVarietyDetails['Тип почвы'] || 'Почва: Не указана' }}</span>
-                                            <span class="bg-white/80 border border-[#D5D0C5] text-brand-dark px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm"><i class="fa-solid fa-droplet text-blue-500 mr-1"></i> {{ extendedVarietyDetails['Тип орошения'] || 'Орошение: Стандарт' }}</span>
-                                            <span class="bg-white/80 border border-[#D5D0C5] text-brand-dark px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm"><i class="fa-solid fa-clock text-brand-green mr-1"></i> Созревание: {{ extendedVarietyDetails['Группа созревания'] || 'Среднее' }}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="px-10 bg-brand-surface/50 border-b border-[#E8E3D5] flex gap-8">
-                                <button @click="activeDetailTab = 'main'" :class="{'border-b-[3px] border-brand-green text-brand-dark font-bold': activeDetailTab === 'main', 'text-brand-dark/50 border-transparent': activeDetailTab !== 'main'}" class="pb-4 pt-4 uppercase tracking-wider text-sm">Аналитика сорта</button>
-                                <button @click="activeDetailTab = 'calendar'" :class="{'border-b-[3px] border-brand-green text-brand-dark font-bold': activeDetailTab === 'calendar', 'text-brand-dark/50 border-transparent': activeDetailTab !== 'calendar'}" class="pb-4 pt-4 uppercase tracking-wider text-sm">Календарь фенофаз</button>
-                            </div>
-
-                            <div class="p-10 bg-white min-h-[500px]">
-                                <transition name="fade" mode="out-in">
-                                    <div v-if="activeDetailTab === 'main'" key="main">
-                                        
-                                        <div class="mb-8 border-b border-[#E8E3D5] pb-6">
-                                            <div class="text-[10px] font-bold text-brand-dark/40 uppercase tracking-widest mb-3">Выберите подвой для просмотра специфичных характеристик:</div>
-                                            <div v-if="selectedVariety.rootstocks && selectedVariety.rootstocks.length > 0" class="flex flex-wrap gap-2 bg-brand-surface p-2 rounded-2xl border border-[#E8E3D5] inline-flex">
-                                                <button v-for="rs in selectedVariety.rootstocks" :key="rs['Подвой']"
-                                                        @click="activeRootstockTab = rs['Подвой']"
-                                                        :class="['px-5 py-2 rounded-xl text-sm font-bold transition-all', 
-                                                                activeRootstockTab === rs['Подвой'] ? 'bg-brand-green text-white shadow-md' : 'text-brand-dark/60 hover:text-brand-dark hover:bg-white/50']">
-                                                    <i class="fa-solid fa-seedling mr-1 opacity-70"></i> {{ rs['Подвой'] }}
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div class="space-y-12">
-                                            
-                                            <!-- БЛОК 1: Качество и вкус -->
-                                            <div>
-                                                <h4 class="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3"><i class="fa-solid fa-flask text-brand-green"></i> Качество и баланс вкуса</h4>
-                                                <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                                                    <div class="bg-brand-bg border border-[#E8E3D5] rounded-3xl p-6 text-center shadow-sm">
-                                                        <div class="text-[10px] uppercase font-bold text-brand-dark/40 mb-4">Сахаристость (BRIX)</div>
-                                                        <div class="text-4xl font-serif font-bold text-brand-dark mb-2">{{ formatValue(extendedVarietyDetails['BRIX (от), %']) }}<span class="text-xl">%</span></div>
-                                                        <div class="w-full bg-gray-200 rounded-full h-2 mt-4">
-                                                            <div class="bg-brand-yellow h-2 rounded-full" :style="{width: (parseNumber(extendedVarietyDetails['BRIX (от), %']) / 20 * 100) + '%'}"></div>
-                                                        </div>
-                                                    </div>
-                                                    <div class="bg-brand-bg border border-[#E8E3D5] rounded-3xl p-6 text-center shadow-sm">
-                                                        <div class="text-[10px] uppercase font-bold text-brand-dark/40 mb-4">Кислотность</div>
-                                                        <div class="text-4xl font-serif font-bold text-brand-dark mb-2">{{ formatValue(extendedVarietyDetails['Кислотность (от), г/л']) }}<span class="text-base text-brand-dark/40 ml-1">г/л</span></div>
-                                                        <div class="w-full bg-gray-200 rounded-full h-2 mt-4">
-                                                            <div class="bg-yellow-400 h-2 rounded-full" :style="{width: (parseNumber(extendedVarietyDetails['Кислотность (от), г/л']) / 12 * 100) + '%'}"></div>
-                                                        </div>
-                                                    </div>
-                                                    <div class="bg-brand-bg border border-[#E8E3D5] rounded-3xl p-6 text-center shadow-sm">
-                                                        <div class="text-[10px] uppercase font-bold text-brand-dark/40 mb-4">Твердость</div>
-                                                        <div class="text-4xl font-serif font-bold text-brand-dark mb-2">{{ formatValue(extendedVarietyDetails['Твердость, кг/см2']) }}</div>
-                                                        <div class="w-full bg-gray-200 rounded-full h-2 mt-4">
-                                                            <div class="bg-brand-dark h-2 rounded-full" :style="{width: (parseNumber(extendedVarietyDetails['Твердость, кг/см2']) / 10 * 100) + '%'}"></div>
-                                                        </div>
-                                                    </div>
-                                                    <div class="bg-brand-bg border border-[#E8E3D5] rounded-3xl p-6 text-center shadow-sm flex flex-col justify-center">
-                                                        <i class="fa-solid fa-snowflake text-4xl text-blue-400 mb-3"></i>
-                                                        <div class="text-[10px] uppercase font-bold text-brand-dark/40 mb-1">Срок в ULO</div>
-                                                        <div class="text-xl font-bold text-brand-dark">{{ formatValue(extendedVarietyDetails['Поведение при хранении (до) (CA/ULO мес.)']) }} мес.</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- БЛОК 2: Структура калибров -->
-                                            <div>
-                                                <div class="flex justify-between items-end mb-4">
-                                                    <h4 class="text-xl font-serif font-bold text-brand-dark flex items-center gap-3"><i class="fa-solid fa-ruler-combined text-brand-yellow"></i> Структура выхода калибров</h4>
-                                                </div>
-                                                <div v-if="uiData.calibers.length === 0" class="text-sm text-brand-dark/40 font-bold bg-brand-surface border border-[#E8E3D5] rounded-2xl p-6 text-center">Данные отсутствуют</div>
-                                                <div v-else class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-                                                    <div v-for="cal in uiData.calibers" :key="cal.label" class="bg-brand-surface border border-[#E8E3D5] rounded-2xl p-4 text-center hover:border-brand-green transition-colors">
-                                                        <div class="text-[10px] uppercase font-bold text-brand-dark/50 mb-1">Калибр</div>
-                                                        <div class="text-lg font-bold text-brand-dark mb-2">{{ cal.label }} <span class="text-xs text-brand-dark/50">мм</span></div>
-                                                        <div class="inline-block bg-white px-3 py-1 rounded-lg text-sm font-bold text-brand-green shadow-sm border border-[#E8E3D5]">{{ formatValue(cal.value) }}%</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- БЛОК 3: Классность плодов -->
-                                            <div>
-                                                <div class="flex justify-between items-end mb-4">
-                                                    <h4 class="text-xl font-serif font-bold text-brand-dark flex items-center gap-3"><i class="fa-solid fa-award text-brand-red"></i> Распределение по классам качества</h4>
-                                                </div>
-                                                <div v-if="uiData.classes.length === 0" class="text-sm text-brand-dark/40 font-bold bg-brand-surface border border-[#E8E3D5] rounded-2xl p-6 text-center">Данные отсутствуют</div>
-                                                <div v-else class="flex flex-wrap gap-4">
-                                                    <div v-for="cls in uiData.classes" :key="cls.label" class="bg-white border border-[#E8E3D5] rounded-2xl p-4 flex items-center gap-4 min-w-[200px] shadow-sm hover:shadow-md transition-shadow">
-                                                        <div class="w-10 h-10 rounded-full bg-brand-bg flex items-center justify-center text-brand-dark border border-[#E8E3D5]">
-                                                            <i v-if="cls.label.includes('1')" class="fa-solid fa-medal text-brand-yellow"></i>
-                                                            <i v-else-if="cls.label.includes('индустр')" class="fa-solid fa-industry text-gray-500"></i>
-                                                            <span v-else class="font-bold text-xs">{{ cls.label.split(' ')[0] }}</span>
-                                                        </div>
-                                                        <div>
-                                                            <div class="text-[10px] uppercase font-bold text-brand-dark/50 mb-0.5">{{ cls.label }}</div>
-                                                            <div class="text-lg font-bold text-brand-dark">{{ formatValue(cls.value) }}%</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                                                <!-- БЛОК 4: Иммунитет -->
-                                                <div>
-                                                    <h4 class="text-xl font-serif font-bold text-brand-dark mb-4 flex items-center gap-3"><i class="fa-solid fa-shield-virus text-blue-500"></i> Биологический иммунитет</h4>
-                                                    <div class="bg-white border border-[#E8E3D5] rounded-3xl p-6 shadow-sm space-y-5 h-full">
-                                                        <div v-if="uiData.immunity.length === 0" class="text-sm text-brand-dark/40 font-bold text-center py-4">Данные по устойчивости отсутствуют</div>
-                                                        <div v-for="im in uiData.immunity" :key="im.label" class="flex justify-between items-center">
-                                                            <span class="text-sm font-bold text-brand-dark/80">{{ im.label }}</span>
-                                                            <div class="flex gap-1.5">
-                                                                <div v-for="i in 3" :key="i" class="w-8 h-2 rounded-full transition-colors" 
-                                                                     :class="i <= im.value ? (im.value === 3 ? 'bg-brand-green' : (im.value === 2 ? 'bg-brand-yellow' : 'bg-brand-red')) : 'bg-gray-100'">
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <!-- БЛОК 5: Потери -->
-                                                <div>
-                                                    <h4 class="text-xl font-serif font-bold text-brand-dark mb-4 flex items-center gap-3"><i class="fa-solid fa-triangle-exclamation text-brand-red"></i> Структура потерь</h4>
-                                                    <div class="bg-white border border-[#E8E3D5] rounded-3xl p-6 shadow-sm space-y-5 h-full">
-                                                        <div v-if="uiData.losses.length === 0" class="text-sm text-brand-dark/40 font-bold text-center py-4">Данные по потерям отсутствуют</div>
-                                                        <div v-for="loss in uiData.losses" :key="loss.label">
-                                                            <div class="flex justify-between text-xs font-bold text-brand-dark/80 mb-1">
-                                                                <span>{{ loss.label }}</span><span class="text-brand-red">{{ formatValue(loss.value) }}%</span>
-                                                            </div>
-                                                            <div class="h-1.5 w-full bg-red-50 rounded-full overflow-hidden">
-                                                                <div class="h-full bg-brand-red rounded-full transition-all" :style="{width: loss.width + '%'}"></div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- БЛОК 6: Индексы крахмала -->
-                                            <div>
-                                                <h4 class="text-xl font-serif font-bold text-brand-dark mb-4 flex items-center gap-3"><i class="fa-solid fa-microscope text-purple-500"></i> Индекс крахмала (Окно уборки)</h4>
-                                                <div class="bg-brand-bg border border-[#E8E3D5] rounded-3xl p-8 shadow-sm">
-                                                    <div v-if="!uiData.starch.optimum" class="text-sm text-brand-dark/40 font-bold text-center py-4">Данные по крахмалу отсутствуют</div>
-                                                    <div v-else class="max-w-3xl mx-auto py-4">
-                                                        <div class="relative w-full h-3 bg-gray-200 rounded-full mt-8 mb-10 shadow-inner">
-                                                            <div class="absolute h-full bg-brand-green/30" :style="{left: (uiData.starch.start/10*100)+'%', width: ((uiData.starch.stop - uiData.starch.start)/10*100)+'%'}"></div>
-                                                            <div class="absolute w-5 h-5 bg-brand-yellow rounded-full -mt-1 shadow-md border-2 border-white flex flex-col items-center transition-all" :style="{left: (uiData.starch.start/10*100)+'%'}">
-                                                                <div class="absolute -top-7 text-[10px] font-bold text-brand-dark whitespace-nowrap bg-white px-2 py-0.5 rounded shadow-sm">START: {{formatValue(uiData.starch.start)}}</div>
-                                                            </div>
-                                                            <div class="absolute w-6 h-6 bg-brand-green rounded-full -mt-1.5 shadow-md border-2 border-white z-10 flex flex-col items-center transition-all" :style="{left: (uiData.starch.optimum/10*100)+'%'}">
-                                                                <div class="absolute -bottom-8 text-xs font-bold text-white whitespace-nowrap bg-brand-green px-2 py-1 rounded shadow-md">OPTIMUM: {{formatValue(uiData.starch.optimum)}}</div>
-                                                            </div>
-                                                            <div class="absolute w-5 h-5 bg-brand-red rounded-full -mt-1 shadow-md border-2 border-white flex flex-col items-center transition-all" :style="{left: (uiData.starch.stop/10*100)+'%'}">
-                                                                <div class="absolute -top-7 text-[10px] font-bold text-brand-dark whitespace-nowrap bg-white px-2 py-0.5 rounded shadow-sm">STOP: {{formatValue(uiData.starch.stop)}}</div>
-                                                            </div>
-                                                        </div>
-                                                        <div class="flex justify-between text-xs font-bold text-brand-dark/40 px-2">
-                                                            <span>1 балл (Неспелое)</span><span>Шкала Люголя (1-10)</span><span>10 баллов (Переспелое)</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- БЛОК 7: ДЕТАЛЬНЫЕ ХАРАКТЕРИСТИКИ (КРАСИВАЯ ПЛИТКА ВИДЖЕТОВ) -->
-                                            <div class="pt-10 border-t border-[#E8E3D5]">
-                                                <h4 class="text-sm font-bold text-brand-dark/50 uppercase tracking-widest mb-6">Детальные характеристики</h4>
-                                                <div v-for="(fields, groupName) in groupedDetails" :key="groupName" v-show="fields.length > 0 && groupName !== 'Сводка фенофаз'" class="mb-8">
-                                                    <h5 class="font-bold text-brand-dark mb-4 text-lg">{{ groupName }}</h5>
-                                                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                                                        <div v-for="field in fields" :key="field.key" class="bg-white border border-[#E8E3D5] rounded-2xl p-4 flex flex-col relative overflow-hidden group hover:shadow-md hover:border-brand-green transition-all">
-                                                            <div class="absolute -right-3 -top-3 text-5xl opacity-[0.03] group-hover:opacity-10 transition-opacity text-brand-green">
-                                                                <i :class="getDynamicIcon(field.key)"></i>
-                                                            </div>
-                                                            <div class="text-[9px] uppercase font-bold text-brand-dark/50 tracking-wider mb-2 pr-6 line-clamp-2" :title="field.key">{{ field.key }}</div>
-                                                            <div class="text-base font-bold text-brand-dark mt-auto break-words" :title="field.value">{{ formatValue(field.value) }}</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                        </div>
-                                    </div>
-
-                                    <!-- ВКЛАДКА КАЛЕНДАРЯ -->
-                                    <div v-else-if="activeDetailTab === 'calendar'" key="calendar">
-                                        <div class="flex justify-between items-end mb-8">
-                                            <div>
-                                                <h4 class="text-2xl font-serif font-bold text-brand-dark flex items-center gap-3"><i class="fa-solid fa-calendar-day text-brand-green"></i> Июнь 2026</h4>
-                                            </div>
-                                        </div>
-                                        <div class="mb-6 bg-brand-green/10 border border-brand-green/20 rounded-xl p-4 flex justify-between items-center">
-                                            <div class="flex items-center gap-3">
-                                                <i class="fa-regular fa-clock text-brand-green text-xl"></i>
-                                                <div>
-                                                    <div class="text-[10px] font-bold text-brand-green uppercase tracking-widest">Прогноз уборки плодов</div>
-                                                    <div class="font-bold text-brand-dark text-sm">
-                                                        {{ formatDateInternal(extendedVarietyDetails['Уборка плодов - дата начала']) }} — 
-                                                        {{ formatDateInternal(extendedVarietyDetails['Уборка плодов - дата окончания']) }}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="text-right">
-                                                <div class="text-2xl font-bold text-brand-green">{{ calendarSummaryDuration }} дней</div>
-                                                <div class="text-[10px] text-brand-dark/50 uppercase font-bold">Длительность сбора</div>
-                                            </div>
-                                        </div>
-                                        <div class="grid grid-cols-7 gap-2 text-center mb-2">
-                                            <div v-for="day in ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']" :key="day" class="text-xs font-bold text-brand-dark/40 uppercase pb-2">{{ day }}</div>
-                                        </div>
-                                        <div class="grid grid-cols-7 gap-3 mb-10">
-                                            <div v-for="day in 30" :key="day" 
-                                                 :class="['h-28 rounded-2xl border p-3 flex flex-col transition-all', 
-                                                          day === 20 ? 'border-brand-red border-2 shadow-lg scale-105 z-10 bg-white' : 'border-[#E8E3D5] bg-brand-surface/30',
-                                                          getActivePhaseForDay(day) ? 'bg-brand-green/10 border-brand-green/30' : '']">
-                                                 <div class="flex justify-between items-start">
-                                                     <span :class="['w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm', day === 20 ? 'bg-brand-red text-white' : 'text-brand-dark/70']">{{ day }}</span>
-                                                 </div>
-                                                 <div v-if="getActivePhaseForDay(day)" class="mt-auto bg-brand-green text-white text-[9px] font-bold uppercase px-2 py-1.5 rounded-lg leading-tight shadow-sm">{{ getActivePhaseForDay(day) }}</div>
-                                            </div>
-                                        </div>
-                                        <div v-if="groupedDetails['Сводка фенофаз'] && groupedDetails['Сводка фенофаз'].length > 0">
-                                            <h4 class="text-xl font-serif font-bold text-brand-dark mb-6 mt-8 flex items-center gap-3"><span class="w-2 h-6 bg-brand-dark rounded-full"></span> Дорожная карта: Даты фенофаз</h4>
-                                            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                                                <div v-for="(field, index) in groupedDetails['Сводка фенофаз']" :key="field.key" class="bg-brand-bg p-4 rounded-xl border border-[#F0ECE1] relative overflow-hidden group hover:border-brand-green transition-colors">
-                                                    <div class="absolute -right-2 -bottom-4 text-5xl opacity-5 text-brand-dark"><i :class="getPhaseIcon(field.key)"></i></div>
-                                                    <div class="text-[10px] font-bold text-brand-green mb-2">{{ index + 1 }} этап</div>
-                                                    <div class="text-[10px] text-brand-dark/70 font-bold uppercase tracking-wider mb-1">{{ field.key.replace('ФЕНОФАЗА: ', '') }}</div>
-                                                    <div class="text-sm text-brand-dark font-bold">{{ field.value }}</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </transition>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 5. ДЕТАЛЬНЫЙ ГРАФ РЕШЕНИЙ -->
-                    <div v-else-if="currentView === 'decision_graph_detail'" key="graph-detail" class="max-w-[1600px] mx-auto w-full flex flex-col h-full bg-white rounded-[2rem] border border-[#E8E3D5] shadow-soft overflow-hidden">
-                        <div class="shrink-0 border-b border-[#E8E3D5] bg-brand-bg px-8 py-5 flex justify-between items-center z-10 relative">
-                            <div>
-                                <div class="text-brand-green font-bold tracking-widest uppercase text-xs mb-1 flex items-center gap-2"><i class="fa-solid fa-diagram-project"></i> Технологическая карта и протоколы рисков</div>
-                                <h2 class="text-2xl font-serif font-bold text-brand-dark">Глобальный План-протокол</h2>
-                            </div>
-                            <button @click="setView('decision_graph_catalog')" class="text-sm font-bold text-brand-green hover:text-brand-dark flex items-center gap-2 bg-white px-5 py-2 rounded-full border border-[#E8E3D5] shadow-sm transition-colors">
-                                <i class="fa-solid fa-arrow-left"></i> Назад
-                            </button>
-                        </div>
-                        <div class="flex-1 flex overflow-hidden">
-                            <div class="w-80 bg-brand-surface/30 border-r border-[#E8E3D5] flex flex-col h-full z-20 relative">
-                                <div class="p-5 border-b border-[#E8E3D5] bg-white/50 backdrop-blur-sm sticky top-0 z-10">
-                                    <h3 class="text-sm font-bold text-brand-dark uppercase tracking-widest flex items-center gap-2"><i class="fa-regular fa-calendar text-brand-green"></i> Жизненный цикл</h3>
-                                </div>
-                                <div class="flex-1 overflow-y-auto p-5 custom-scrollbar relative">
-                                    <div class="absolute left-[31px] top-8 bottom-8 w-0.5 bg-[#E8E3D5] z-0"></div>
-                                    <div v-for="(node, idx) in decisionGraphNodes" :key="idx" @click="selectedGraphPhase = node" class="relative pl-10 mb-6 last:mb-0 cursor-pointer group">
-                                        <div :class="['absolute left-0 top-1.5 w-4 h-4 border-[3px] border-white rounded-full z-10 shadow-sm transition-all', selectedGraphPhase?.phase === node.phase ? 'bg-brand-green ring-4 ring-brand-green/20 scale-125' : 'bg-[#D5D0C5] group-hover:bg-brand-green/50']"></div>
-                                        <div :class="['rounded-xl p-3 transition-all', selectedGraphPhase?.phase === node.phase ? 'bg-white border-2 border-brand-green shadow-md transform translate-x-1' : 'bg-white/50 border border-transparent hover:border-[#E8E3D5] hover:bg-white']">
-                                            <div class="text-[9px] font-bold uppercase tracking-wider mb-1" :class="selectedGraphPhase?.phase === node.phase ? 'text-brand-green' : 'text-brand-dark/40'">{{ node.startFormatted }} - {{ node.endFormatted }}</div>
-                                            <h4 class="font-bold text-brand-dark text-sm leading-tight">{{ node.phase }}</h4>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex-1 flex flex-col h-full relative bg-white z-10 overflow-hidden">
-                                <div v-if="!selectedGraphPhase" class="flex flex-col items-center justify-center h-full text-brand-dark/30 text-center p-10">
-                                    <i class="fa-regular fa-hand-pointer text-6xl mb-4 opacity-50"></i>
-                                    <h3 class="text-xl font-serif font-bold text-brand-dark/50">Выберите фенофазу слева</h3>
-                                </div>
-                                <transition name="fade" mode="out-in">
-                                    <div v-if="selectedGraphPhase" :key="selectedGraphPhase.phase" class="flex-1 flex flex-col h-full">
-                                        <div class="p-8 border-b border-[#E8E3D5] bg-brand-bg shrink-0">
-                                            <div class="flex items-center gap-3 mb-2">
-                                                <div class="px-3 py-1 bg-brand-green/10 text-brand-green rounded-md text-[10px] font-bold uppercase tracking-widest border border-brand-green/20">Активный период</div>
-                                                <div class="text-xs font-bold text-brand-dark/50"><i class="fa-regular fa-clock"></i> {{ selectedGraphPhase.startFormatted }} - {{ selectedGraphPhase.endFormatted }}</div>
-                                            </div>
-                                            <h3 class="text-3xl font-serif font-bold text-brand-dark">{{ selectedGraphPhase.phase }}</h3>
-                                        </div>
-                                        <div class="flex-1 overflow-y-auto p-8 custom-scrollbar bg-gray-50/50">
-                                            <div v-if="!selectedGraphPhase.risks || selectedGraphPhase.risks.length === 0" class="bg-white border border-[#E8E3D5] rounded-2xl p-8 text-center text-brand-dark/50 shadow-sm max-w-xl">
-                                                <i class="fa-solid fa-shield-halved text-3xl text-[#D5D0C5] mb-2"></i>
-                                                <div class="font-bold">Типовых рисков не зафиксировано</div>
-                                            </div>
-                                            <div v-else class="space-y-10">
-                                                <div v-for="(risk, rIdx) in selectedGraphPhase.risks" :key="rIdx" class="w-full">
-                                                    <div class="overflow-x-auto pb-4 swimlane-scroll">
-                                                        <div class="flex items-stretch gap-6 min-w-max px-2 py-2">
-                                                            <div class="bg-[#FFF5F5] border-2 border-brand-red/20 rounded-2xl p-5 shadow-sm w-72 shrink-0 flex flex-col h-full">
-                                                                <div class="text-[10px] font-bold text-brand-red uppercase mb-2 flex items-center gap-1.5"><i class="fa-solid fa-fire"></i> {{ risk.type || 'Событие' }}</div>
-                                                                <div class="font-bold text-brand-dark text-lg leading-tight mb-2">{{ risk.name }}</div>
-                                                                <div class="bg-white px-2 py-1 rounded border border-brand-red/10 text-xs font-bold text-brand-red/80 inline-block self-start mb-3">{{ risk.condition }}</div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </transition>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 6. РЕГЛАМЕНТЫ (МАТРИЦА SOP) -->
-                    <div v-else-if="currentView === 'protocols'" key="protocol-matrix" class="max-w-[1600px] mx-auto w-full flex flex-col h-full bg-transparent">
-                        <div class="mb-6 flex justify-between items-end shrink-0 bg-white p-8 rounded-[2rem] border border-[#E8E3D5] shadow-sm">
-                            <div>
-                                <div class="text-brand-green font-bold tracking-widest uppercase text-xs mb-2 flex items-center gap-2"><i class="fa-solid fa-clipboard-list"></i> Исполнение</div>
-                                <h2 class="text-3xl font-serif font-bold text-brand-dark">Агротехнические регламенты (SOP)</h2>
-                            </div>
-                            <div class="flex gap-2">
-                                <button v-for="cat in ['Все', 'Климат', 'Вредители', 'Болезни', 'Организационные']" :key="cat" @click="activeProtocolCategory = cat" :class="['px-5 py-2.5 rounded-xl text-sm font-bold transition-all border', activeProtocolCategory === cat ? 'bg-brand-green text-white border-brand-green shadow-md' : 'bg-brand-surface text-brand-dark/60 border-transparent hover:border-[#E8E3D5]']">{{ cat }}</button>
-                            </div>
-                        </div>
-                        <div class="flex-1 overflow-y-auto custom-scrollbar pb-6">
-                            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                <div v-for="(rule, idx) in filteredProtocols" :key="idx" class="bg-white rounded-[2rem] border border-[#E8E3D5] shadow-sm hover:shadow-soft transition-all overflow-hidden flex flex-col relative group h-full">
-                                    <div :class="['h-2 w-full shrink-0', getProtocolColor(rule.category)]"></div>
-                                    <div class="p-6 md:p-8 flex-1 flex flex-col relative">
-                                        <i :class="['fa-solid absolute top-8 right-6 text-5xl opacity-5 pointer-events-none', getProtocolIcon(rule.category)]"></i>
-                                        <div class="flex justify-between items-start mb-4 relative z-10"><div :class="['text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md border', getProtocolBadgeClass(rule.category)]">{{ rule.category }}</div></div>
-                                        <h3 class="text-2xl font-serif font-bold text-brand-dark leading-tight mb-2 relative z-10">{{ rule.threat }}</h3>
-                                        <div class="bg-brand-surface/50 border border-brand-green/30 rounded-2xl p-5 relative z-10 mt-auto flex flex-col"><div class="font-bold text-brand-dark text-lg mb-2 leading-tight">{{ rule.action }}</div></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                </transition>
-            </div>
-        </main>
-
-        <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ -->
-        <transition name="fade">
-            <div v-if="isModalOpen && currentUser.role === 'admin'" class="fixed inset-0 z-50 flex items-center justify-center p-6">
-                <div class="absolute inset-0 bg-brand-dark/40 backdrop-blur-sm" @click="closeModal"></div>
-                <div class="bg-white w-full max-w-6xl max-h-[95vh] rounded-[2rem] shadow-2xl flex flex-col relative z-10 overflow-hidden border border-[#E8E3D5]">
-                    <div class="px-10 py-6 border-b border-[#E8E3D5] flex justify-between items-center bg-brand-surface shrink-0">
-                        <div>
-                            <h3 class="text-2xl font-serif font-bold text-brand-dark">{{ modalMode === 'add' ? 'Добавить новый сорт' : `Правка паспорта: ${form['Сорт'] || ''}` }}</h3>
-                            <p class="text-xs text-brand-dark/50 uppercase font-bold tracking-widest mt-1">Изменения записываются в базу данных API</p>
-                        </div>
-                        <button @click="closeModal" class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-dark/50 hover:text-brand-red"><i class="fa-solid fa-xmark"></i></button>
-                    </div>
-                    <div class="p-10 overflow-y-auto flex-1 bg-brand-bg custom-scrollbar">
-                        <form @submit.prevent="saveVariety" class="space-y-10">
-                            <div v-if="modalMode === 'add'" class="bg-white p-8 rounded-3xl border border-[#E8E3D5] shadow-sm">
-                                <label class="block text-xs font-bold text-brand-dark uppercase tracking-wider mb-2">Название сорта *</label>
-                                <input type="text" v-model="form['Сорт']" required class="w-full px-5 py-4 bg-brand-surface border border-[#E8E3D5] rounded-xl focus:ring-2 focus:ring-brand-green outline-none font-bold text-brand-dark text-lg">
-                            </div>
-                            
-                            <div v-for="(fieldsArray, groupName) in groupedFormFields" :key="groupName" v-show="fieldsArray.length > 0" class="bg-white p-8 rounded-3xl border border-[#E8E3D5] shadow-sm">
-                                <h4 class="font-serif font-bold text-xl text-brand-dark mb-6 flex items-center gap-3"><span class="w-2 h-6 bg-brand-green rounded-full"></span> {{ groupName }}</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                    <div v-for="field in fieldsArray" :key="field.key" v-show="field.key !== 'Сорт'">
-                                        <label class="block text-[10px] font-bold text-brand-dark/60 uppercase tracking-wider mb-2 truncate" :title="field.key">{{ field.key }}</label>
-                                        <input type="text" v-model="form[field.key]" class="w-full px-4 py-3 bg-brand-surface border border-[#E8E3D5] rounded-xl focus:ring-2 focus:ring-brand-green outline-none font-medium text-sm text-brand-dark">
-                                    </div>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="px-10 py-6 border-t border-[#E8E3D5] bg-white flex justify-end gap-4 shrink-0">
-                        <button @click="closeModal" class="px-6 py-3 rounded-xl text-brand-dark font-bold hover:bg-brand-surface transition-colors">Отменить</button>
-                        <button @click="saveVariety" class="px-8 py-3 bg-brand-green rounded-xl text-white font-bold hover:bg-[#3D5C3A] shadow-lg transition-all flex items-center gap-2">
-                            <i class="fa-solid fa-cloud-arrow-up"></i> Сохранить в БД
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </transition>
-
-    </template>
-</div>
-
-<script>
-    const { createApp, ref, computed, onMounted, nextTick, reactive } = Vue;
-
-    createApp({
-        setup() {
-            // AUTH STATE
-            const isAuthenticated = ref(false);
-            const currentUser = ref(null);
-            const loginForm = reactive({ username: '', password: '' });
-
-            // APP STATE
-            const currentView = ref('directory'); 
-            const varieties = ref([]);
-            const columns = ref([]);
-            const selectedVariety = ref(null);
-            const activeDetailTab = ref('main');
-            const activeRootstockTab = ref(null);
-            
-            const isLoading = ref(false);
-            const loadError = ref(false);
-            
-            const isModalOpen = ref(false);
-            const modalMode = ref('add');
-            const form = ref({});
-            const isDataModalOpen = ref(false);
-            const isHistoryModalOpen = ref(false);
-            const historyVariety = ref(null);
-
-            const filters = reactive({ search: '', group: '', category: '', sortField: 'name', sortDir: 'asc' });
-
-            // API AUTH
-            const login = async () => {
-                try {
-                    const response = await fetch('http://127.0.0.1:8000/api/login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(loginForm)
-                    });
-                    
-                    if (!response.ok) throw new Error("Неверный логин или пароль");
-                    
-                    const user = await response.json();
-                    currentUser.value = user;
-                    isAuthenticated.value = true;
-                    loadApiData(); 
-                } catch (e) {
-                    alert(e.message);
-                }
-            };
-
-            const logout = () => {
-                isAuthenticated.value = false;
-                currentUser.value = null;
-                loginForm.username = '';
-                loginForm.password = '';
-                varieties.value = [];
-            };
-
-            // UTILS (С ИСПРАВЛЕННЫМ ДВУМЯ ЗНАКАМИ ПОСЛЕ ЗАПЯТОЙ)
-            const parseNumber = (val) => {
-                if (!val) return 0;
-                const num = parseFloat(String(val).replace(/\s/g, '').replace(',', '.'));
-                return isNaN(num) ? 0 : num;
-            };
-
-            const formatValue = (val) => {
-                if (val === undefined || val === null || val === '') return '—';
-                if (typeof val === 'number') return Number.isInteger(val) ? val : parseFloat(val.toFixed(2));
-                const strVal = String(val).trim();
-                if (/^-?\d+([.,]\d+)?$/.test(strVal)) {
-                    const num = parseFloat(strVal.replace(',', '.'));
-                    return Number.isInteger(num) ? num : parseFloat(num.toFixed(2));
-                }
-                return val;
-            };
-
-            const formatDateInternal = (val) => {
-                if (!val || val === '—' || val === 'NaT' || val === 'nan') return '—';
-                if (typeof val === 'number') {
-                    const d = new Date(Math.round((val - 25569) * 864e5));
-                    return dayjs(d).format('DD.MM.YYYY');
-                }
-                let s = String(val).trim();
-                if (s.includes('-') && s.length >= 10) {
-                    const datePart = s.split(' ')[0]; 
-                    const parts = datePart.split('-');
-                    if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`; 
-                }
-                if (s.includes('.')) {
-                    let parts = s.split('.');
-                    if (parts.length === 2) return `${parts[0].padStart(2, '0')}.${parts[1].padEnd(2, '0')}`;
-                    if (parts.length === 3) return `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[2]}`;
-                }
-                return s;
-            };
-
-            const parseDateToTimestamp = (dateStr) => {
-                if (!dateStr || dateStr === '—') return null;
-                const formatted = formatDateInternal(dateStr);
-                const [d, m] = formatted.split('.');
-                if (!d || !m) return null;
-                return new Date(2026, parseInt(m) - 1, parseInt(d)).getTime();
-            };
-
-            const cleanPhaseName = (rawName) => rawName.split(',').pop().replace(/["_0-9]/g, '').trim();
-
-            const getPhaseIcon = (phaseKey) => {
-                if (!phaseKey) return 'fa-calendar-check';
-                const p = phaseKey.toLowerCase();
-                if (p.includes('покоя')) return 'fa-snowflake';
-                if (p.includes('зеленый конус')) return 'fa-leaf';
-                if (p.includes('мышиные ушки')) return 'fa-bug';
-                if (p.includes('бутон')) return 'fa-seedling';
-                if (p.includes('цветени')) return 'fa-sun';
-                if (p.includes('завязь') || p.includes('лещина') || p.includes('орех')) return 'fa-circle-notch';
-                if (p.includes('рост')) return 'fa-arrow-trend-up';
-                if (p.includes('созревание')) return 'fa-apple-whole';
-                if (p.includes('уборка')) return 'fa-truck-fast';
-                return 'fa-calendar-check';
-            };
-
-            const getDynamicIcon = (key) => {
-                const k = key.toLowerCase();
-                if (k.includes('класс') || k.includes('категор')) return 'fa-award';
-                if (k.includes('вес') || k.includes('масса') || k.includes('нагрузк')) return 'fa-weight-hanging';
-                if (k.includes('калибр') || k.includes('размер') || k.includes('схема') || k.includes('площадь')) return 'fa-ruler-combined';
-                if (k.includes('урожай') || k.includes('плод') || k.includes('сорт') || k.includes('подвой')) return 'fa-leaf';
-                if (k.includes('мороз') || k.includes('холод') || k.includes('темпер')) return 'fa-temperature-low';
-                if (k.includes('болезн') || k.includes('парш') || k.includes('гнил')) return 'fa-virus';
-                if (k.includes('вредител') || k.includes('насеком')) return 'fa-bug';
-                if (k.includes('brix') || k.includes('сахар') || k.includes('сладост')) return 'fa-cubes-stacked';
-                if (k.includes('кислот')) return 'fa-lemon';
-                if (k.includes('твердост') || k.includes('плотност')) return 'fa-dumbbell';
-                if (k.includes('хранен') || k.includes('лежкост')) return 'fa-box-open';
-                if (k.includes('срок') || k.includes('дата') || k.includes('дней')) return 'fa-calendar-days';
-                if (k.includes('крахмал') || k.includes('индекс')) return 'fa-microscope';
-                if (k.includes('окрас') || k.includes('цвет')) return 'fa-palette';
-                if (k.includes('%') || k.includes('доля') || k.includes('выход')) return 'fa-chart-pie';
-                if (k.includes('почв') || k.includes('земл') || k.includes('рельеф')) return 'fa-mountain';
-                if (k.includes('вод') || k.includes('орошен') || k.includes('полив') || k.includes('влажн')) return 'fa-droplet';
-                if (k.includes('опылител') || k.includes('цветени')) return 'fa-bee';
-                return 'fa-circle-info';
-            };
-
-            // API DATA FETCH
-            const loadApiData = async () => {
-                isLoading.value = true;
-                loadError.value = false;
-                try {
-                    const response = await fetch('http://127.0.0.1:8000/api/varieties');
-                    if (!response.ok) throw new Error("API Error");
-                    const data = await response.json();
-                    
-                    const groupedVarieties = [];
-                    data.forEach(row => {
-                        let existing = groupedVarieties.find(v => v['Сорт'] === row['Сорт']);
-                        if (existing) {
-                            if (row['Подвой'] !== '—') existing.rootstocks.push(row);
-                        } else {
-                            groupedVarieties.push({
-                                ...row,
-                                rootstocks: row['Подвой'] !== '—' ? [row] : []
-                            });
-                        }
-                    });
-
-                    varieties.value = groupedVarieties;
-                    if (data.length > 0) columns.value = Object.keys(data[0]).filter(k => k !== 'id' && k !== 'Название сорто-подвоя');
-                    isLoading.value = false;
-                } catch (e) {
-                    loadError.value = true;
-                    isLoading.value = false;
-                }
-            };
-
-            // CRUD OPERATIONS
-            const saveVariety = async () => {
-                if (currentUser.value.role !== 'admin') return;
-                try {
-                    const method = modalMode.value === 'add' ? 'POST' : 'PUT';
-                    const url = modalMode.value === 'add' 
-                        ? 'http://127.0.0.1:8000/api/varieties' 
-                        : `http://127.0.0.1:8000/api/varieties/${form.value.id}`;
-                    
-                    const response = await fetch(url, {
-                        method: method,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(form.value)
-                    });
-                    if (!response.ok) throw new Error("Ошибка сервера");
-                    closeModal();
-                    await loadApiData(); 
-                } catch(e) {
-                    alert("Ошибка при сохранении данных в базу.");
-                }
-            };
-
-            const deleteVariety = async (variety) => {
-                if (currentUser.value.role !== 'admin') return;
-                if (!confirm(`Вы уверены, что хотите удалить сорт "${variety['Сорт']}" из базы данных навсегда?`)) return;
-                try {
-                    const response = await fetch(`http://127.0.0.1:8000/api/varieties/${variety.id}`, { method: 'DELETE' });
-                    if (!response.ok) throw new Error("Ошибка при удалении");
-                    await loadApiData(); 
-                } catch(e) {
-                    alert("Не удалось удалить сорт.");
-                }
-            };
-
-            // COMPUTED PROPERTIES FOR UI
-            const viewTitle = computed(() => ({ 
-                'directory': 'Реестр сортов', 'cards': 'Витрина урожая', 
-                'detail': selectedVariety.value ? selectedVariety.value['Сорт'] : 'Паспорт',
-            })[currentView.value] || 'План-протоколы');
-
-            const filteredAndSortedVarieties = computed(() => {
-                let result = varieties.value;
-                if (filters.search) {
-                    const q = filters.search.toLowerCase();
-                    result = result.filter(v => Object.values(v).some(val => val && String(val).toLowerCase().includes(q)));
-                }
-                return result;
-            });
-
-            const extendedVarietyDetails = computed(() => {
-                if (!selectedVariety.value) return {};
-                const v = selectedVariety.value;
-                let rootstockData = {};
-                if (v.rootstocks && v.rootstocks.length > 0) {
-                    rootstockData = v.rootstocks.find(r => r['Подвой'] === activeRootstockTab.value) || v.rootstocks[0];
-                }
-                return { ...v, ...rootstockData }
-            });
-
-            // ВОССТАНОВЛЕННАЯ ЛОГИКА UI DATA (Графики, калибры, классы)
-            const uiData = computed(() => {
-                const v = extendedVarietyDetails.value;
-                if (!v) return { calibers: [], classes: [], losses: [], immunity: [], starch: {} };
-
-                const calLabels = ['55-60', '60-65', '65-70', '70-75', '75-80', '80-85', '85+'];
-                const calColors = ['text-[#D5D0C5]', 'text-[#A8B29C]', 'text-[#7D9475]', 'text-brand-green', 'text-[#3D5C3A]', 'text-[#1e2a22]', 'text-brand-yellow'];
-                const calibers = calLabels.map((l, i) => ({ label: l, value: parseNumber(v[l]), color: calColors[i] })).filter(c => c.value > 0);
-
-                const classLabels = ['1 класс', '2 класс', '3 класс', '4 класс', '5 класс', '6 класс', 'е.у. ', '% индустриального яблока по валовке'];
-                const classes = classLabels.map(l => {
-                    const cleanLabel = l.replace('% ', '').replace(' яблока по валовке', '');
-                    return { label: cleanLabel, value: parseNumber(v[l]) };
-                }).filter(c => c.value > 0);
-
-                const lossFields = ['Град, %', 'Гниль, %', 'Болезнь, %', 'Вредители, %', 'Критический недокалибр, %', 'Физиологический дефект, %', 'Перезрелость/незрелость, %', 'Иная причина, %'];
-                const losses = lossFields.map(f => {
-                    const val = parseNumber(v[f]);
-                    return { label: f.replace(', %', ''), value: val, width: Math.min(val * 2, 100) };
-                }).filter(l => l.value > 0).sort((a,b) => b.value - a.value);
-
-                const immFields = {'Устойчивость к парше (1-3)': 'Парша', 'Устойчивость к мучнистой росе (1-3)': 'Мучнистая роса', 'Устойчивость к эрвинии (1-3)': 'Эрвиния', 'Устойчивость к глеоспориозу (1-3)': 'Глеоспориоз', 'Устойчивость к гнили семенной камеры (1-3)': 'Гниль'};
-                const immunity = Object.keys(immFields).map(k => ({ label: immFields[k], value: parseNumber(v[k]) })).filter(i => i.value > 0);
-
-                const starch = {
-                    start: parseNumber(v['Крахмал START (от), б']),
-                    optimum: parseNumber(v['Крахмал Optimum (от), б']),
-                    stop: parseNumber(v['Крахмал STOP (от), б'])
-                };
-
-                return { calibers, classes, losses, immunity, starch };
-            });
-
-            // ВОССТАНОВЛЕННАЯ ЛОГИКА ГРУППИРОВКИ
-            const HARDCODED_FIELDS = [
-                'Сорт', 'Подвой', 'Группа сорта', 'Категория сорта', 'Покровная окраска', 'Категория реализации', 'Сад укрупненно',
-                'Тип почвы', 'Рельеф', 'Тип орошения', 'Группа созревания', 'BRIX (от), %', 'Кислотность (от), г/л', 'Твердость, кг/см2', 'Поведение при хранении (до) (CA/ULO мес.)',
-                'Средний калибр яблока (от), мм', 'Средний калибр яблока (до), мм', 'Средний вес (от), г', 'Средний вес (до), г',
-                '55-60', '60-65', '65-70', '70-75', '75-80', '80-85', '85+', '1 класс', '2 класс', '3 класс', '4 класс', '5 класс', '6 класс', 'е.у. ', '% индустриального яблока по валовке',
-                'Град, %', 'Гниль, %', 'Болезнь, %', 'Вредители, %', 'Критический недокалибр, %', 'Физиологический дефект, %', 'Перезрелость/незрелость, %', 'Иная причина, %',
-                'Устойчивость к парше (1-3)', 'Устойчивость к мучнистой росе (1-3)', 'Устойчивость к эрвинии (1-3)', 'Устойчивость к глеоспориозу (1-3)', 'Устойчивость к гнили семенной камеры (1-3)',
-                'Крахмал START (от), б', 'Крахмал Optimum (от), б', 'Крахмал STOP (от), б', 'Уборка плодов - дата начала', 'Уборка плодов - дата окончания'
-            ];
-
-            const groupLogic = (keysArray, dataObject, isForDisplay = false) => {
-                const groups = {
-                    'Идентификация и Селекция': [], 'Агрономия и Посадка': [], 'Качество и Свойства плодов': [],
-                    'Дополнительная аналитика': [], 'Сводка фенофаз': []
-                };
-                const datesMap = new Map();
-                
-                keysArray.forEach(key => {
-                    const kl = key.toLowerCase();
-                    const fieldVal = dataObject ? dataObject[key] : '';
-                    if (fieldVal === undefined || fieldVal === null) return;
-                    const fieldInfo = { key, value: fieldVal };
-
-                    if (kl.includes(' - дата')) {
-                        if (!dataObject) { groups['Сводка фенофаз'].push(fieldInfo); return; }
-                        const baseName = cleanPhaseName(key.split(' - ')[0]);
-                        const isStart = kl.includes('начала');
-                        if (!datesMap.has(baseName)) datesMap.set(baseName, { start: '—', end: '—' });
-                        if (isStart) datesMap.get(baseName).start = fieldVal;
-                        else datesMap.get(baseName).end = fieldVal;
-                        return;
-                    }
-                    if (isForDisplay && HARDCODED_FIELDS.includes(key)) return;
-
-                    if (kl.includes('селекционер') || kl.includes('производител') || kl.includes('страна') || kl.includes('потенциал') || kl.includes('канал') || kl.includes('sku')) {
-                        groups['Идентификация и Селекция'].push(fieldInfo);
-                    } else if (kl.includes('урожайност') || kl.includes('морозо') || kl.includes('совместимост') || kl.includes('опылител') || kl.includes('схема') || kl.includes('площадь') || kl.includes('деревьев') || kl.includes('нагрузк') || kl.includes('кроны') || kl.includes('плодоношен')) {
-                        groups['Агрономия и Посадка'].push(fieldInfo);
-                    } else if (kl.includes('окраск') || kl.includes('форма') || kl.includes('плотност') || kl.includes('зрелост') || kl.includes('нажим') || kl.includes('целевая масса') || kl.includes('сбор') || kl.includes('дельта')) {
-                        groups['Качество и Свойства плодов'].push(fieldInfo);
-                    } else {
-                        groups['Дополнительная аналитика'].push(fieldInfo);
-                    }
-                });
-
-                if (dataObject && isForDisplay) {
-                    datesMap.forEach((dates, baseName) => {
-                        if(dates.start !== '—' || dates.end !== '—') {
-                            groups['Сводка фенофаз'].push({ key: `ФЕНОФАЗА: ${baseName.toUpperCase()}`, value: `${formatDateInternal(dates.start)} - ${formatDateInternal(dates.end)}` });
-                        }
-                    });
-                }
-                Object.keys(groups).forEach(k => { if(groups[k].length === 0) delete groups[k]; });
-                return groups;
-            };
-
-            const groupedDetails = computed(() => extendedVarietyDetails.value ? groupLogic(columns.value, extendedVarietyDetails.value, true) : {});
-            const groupedFormFields = computed(() => groupLogic(columns.value, null, false));
-
-            const calendarSummaryDuration = computed(() => {
-                const start = extendedVarietyDetails.value['Уборка плодов - дата начала'];
-                const end = extendedVarietyDetails.value['Уборка плодов - дата окончания'];
-                if(start && end && start !== '—' && end !== '—') {
-                    const ts1 = parseDateToTimestamp(start);
-                    const ts2 = parseDateToTimestamp(end);
-                    if(ts1 && ts2) return Math.round((ts2 - ts1) / (1000 * 60 * 60 * 24));
-                }
-                return 15;
-            });
-
-            const getActivePhaseForDay = (dayNum) => {
-                if(!extendedVarietyDetails.value) return null;
-                for (const [key, value] of Object.entries(extendedVarietyDetails.value)) {
-                    if (key.includes(' - дата начала')) {
-                        const startStr = formatDateInternal(value);
-                        const endKey = key.replace('дата начала', 'дата окончания');
-                        const endStr = formatDateInternal(extendedVarietyDetails.value[endKey]);
-                        if (startStr.includes('.06') || endStr.includes('.06')) {
-                            const startM = startStr.split('.')[1], endM = endStr.split('.')[1];
-                            const startD = parseInt(startStr.split('.')[0]), endD = parseInt(endStr.split('.')[0]);
-                            const baseName = cleanPhaseName(key.split(' - ')[0]);
-                            if (startM === '06' && endM === '06' && dayNum >= startD && dayNum <= endD) return baseName;
-                            if (startM === '06' && endM !== '06' && dayNum >= startD) return baseName;
-                            if (startM !== '06' && endM === '06' && dayNum <= endD) return baseName;
-                        }
-                    }
-                }
-                return null;
-            };
-
-            const decisionGraphNodes = computed(() => {
-                if (!extendedVarietyDetails.value) return [];
-                const nodes = [];
-                const datesMap = new Map();
-                columns.value.forEach(key => {
-                    if (key.toLowerCase().includes(' - дата')) {
-                        const baseName = cleanPhaseName(key.split(' - ')[0]);
-                        if (!datesMap.has(baseName)) datesMap.set(baseName, { name: baseName, start: '—', end: '—' });
-                        if (key.toLowerCase().includes('начала')) datesMap.get(baseName).start = extendedVarietyDetails.value[key] || '—';
-                        else datesMap.get(baseName).end = extendedVarietyDetails.value[key] || '—';
-                    }
-                });
-
-                datesMap.forEach(v => {
-                    let risks = [];
-                    if (v.name === 'Состояние покоя') {
-                        risks.push({ type: 'Природные', name: 'Резкие заморозки', condition: '-28°C ... -20°C', desc: 'Критическое понижение температуры.', operations: [{ name: 'Обрезка деревьев санитарная', type: 'Механическая', volume: '50-100%', duration: '3-7 дней' }] });
-                    }
-                    nodes.push({ phase: v.name, startFormatted: formatDateInternal(v.start), endFormatted: formatDateInternal(v.end), risks: risks });
-                });
-                return nodes;
-            });
-
-            // PROTOCOLS MATRIX LOGIC
-            const activeProtocolCategory = ref('Все');
-            const protocols = [
-                { category: 'Климат', threat: 'Резкие заморозки', phase: 'Состояние покоя', condition: '-28°C ... -20°C', desc: 'Критическое понижение температуры.', action: 'Санитарная обрезка'},
-                { category: 'Болезни', threat: 'Эпифитотия парши', phase: 'Мышиные ушки', condition: 'Влажность > 80%', desc: 'Активный выброс аскоспор парши при стабильной влажности.', action: 'Превентивное опрыскивание'}
-            ];
-            const filteredProtocols = computed(() => activeProtocolCategory.value === 'Все' ? protocols : protocols.filter(p => p.category === activeProtocolCategory.value));
-            const getProtocolColor = (cat) => cat === 'Климат' ? 'bg-blue-500' : 'bg-brand-green';
-            const getProtocolBadgeClass = (cat) => cat === 'Климат' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-brand-green/10 text-brand-green border-brand-green/20';
-            const getProtocolIcon = (cat) => cat === 'Климат' ? 'fa-cloud-sun-rain text-blue-500' : 'fa-virus text-brand-green';
-            const selectedGraphPhase = ref(null);
-
-            const uniqueGroups = computed(() => [...new Set(varieties.value.map(v => v['Группа сорта']).filter(Boolean))]);
-            const uniqueCategories = computed(() => [...new Set(varieties.value.map(v => v['Категория реализации']).filter(Boolean))]);
-            const investCount = computed(() => varieties.value.filter(v => v['Категория реализации'] === 'Invest').length);
-            const coreCount = computed(() => varieties.value.filter(v => v['Категория реализации'] === 'Core').length);
-            const earliestHarvest = computed(() => '15.08'); 
-            const maxStorage = computed(() => 11);
-
-            const setView = (view, variety = null) => {
-                currentView.value = view;
-                if (variety) { 
-                    selectedVariety.value = variety; 
-                    activeDetailTab.value = 'main';
-                    if (variety.rootstocks && variety.rootstocks.length > 0) activeRootstockTab.value = variety.rootstocks[0]['Подвой'];
-                }
-            };
-
-            const openModal = (mode, variety = null) => {
-                modalMode.value = mode;
-                let editForm = {};
-                columns.value.forEach(c => { editForm[c] = variety ? (extendedVarietyDetails.value[c] || '') : ''; });
-                if (variety) editForm.id = extendedVarietyDetails.value.id;
-                form.value = editForm;
-                isModalOpen.value = true;
-            };
-
-            const closeModal = () => { isModalOpen.value = false; };
-            const openHistoryModal = (variety) => { historyVariety.value = variety; isHistoryModalOpen.value = true; };
-            const closeHistoryModal = () => { isHistoryModalOpen.value = false; historyVariety.value = null; };
-
-            return {
-                isAuthenticated, currentUser, loginForm, login, logout,
-                currentView, varieties, selectedVariety, extendedVarietyDetails, activeRootstockTab, viewTitle, 
-                isLoading, loadError, filters, form, isModalOpen, modalMode, uiData,
-                uniqueGroups, uniqueCategories, filteredAndSortedVarieties, groupedFormFields, groupedDetails,
-                calendarSummaryDuration, decisionGraphNodes, selectedGraphPhase, activeProtocolCategory, filteredProtocols,
-                investCount, coreCount, earliestHarvest, maxStorage, activeDetailTab,
-                setView, parseNumber, formatValue, formatDateInternal, loadApiData, getDynamicIcon, getPhaseIcon, getActivePhaseForDay,
-                openModal, closeModal, saveVariety, deleteVariety, openHistoryModal, closeHistoryModal,
-                getProtocolColor, getProtocolBadgeClass, getProtocolIcon, isDataModalOpen
-            }
-        }
-    }).mount('#app');
-</script>
-</body>
-</html>
+    conn.close()
+    return {"status": "success", "message": "Сорт успешно добавлен"}
+
+@app.put("/api/varieties/{item_id}")
+def update_variety(item_id: int, payload: Dict[str, Any]):
+    """Обновление данных паспорта"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    payload.pop('id', None)
+    payload.pop('rootstocks', None) 
+    
+    set_clause = ", ".join([f'"{k}" = ?' for k in payload.keys()])
+    values = list(payload.values())
+    values.append(item_id)
+    
+    try:
+        query = f'UPDATE varieties SET {set_clause} WHERE id = ?'
+        cursor.execute(query, values)
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    conn.close()
+    return {"status": "success", "message": "Данные успешно обновлены"}
+
+@app.delete("/api/varieties/{item_id}")
+def delete_variety(item_id: int):
+    """Удаление сорта из базы"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM varieties WHERE id = ?", (item_id,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+    conn.close()
+    return {"status": "success", "message": "Сорт успешно удален"}
+
+# Раздача фронтенда
+@app.get("/")
+def serve_frontend():
+    if os.path.exists("index.html"):
+        return FileResponse("index.html")
+    return {"error": "Файл index.html не найден"}
