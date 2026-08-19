@@ -8,7 +8,6 @@ import os
 
 app = FastAPI(title="Agro Platform API")
 
-# Настройка CORS для локальной разработки
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,31 +18,32 @@ app.add_middleware(
 
 DB_FILE = "agro_platform.db"
 EXCEL_FILE = "База для Паспорта сорта_v4.xlsx"
+DECISION_FILE = "20260601_Паспорта_сортов_матрица_принятия_решений_v21_JP (2).xlsx"
+
+def clean_nan(val):
+    if pd.isna(val): return ""
+    return str(val).strip()
 
 def init_db():
-    """Инициализация базы данных: Пользователи и Данные из Excel"""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # 1. Инициализация таблицы пользователей
+    # 1. Таблица пользователей
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         username TEXT UNIQUE,
                         password TEXT,
                         role TEXT)''')
     
-    # Создаем базовые аккаунты, если их нет
     cursor.execute("SELECT COUNT(*) FROM users")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO users (username, password, role) VALUES ('admin', 'admin', 'admin')")
         cursor.execute("INSERT INTO users (username, password, role) VALUES ('user', 'user', 'user')")
         conn.commit()
-        print("Созданы базовые аккаунты: admin/admin и user/user")
 
-    # 2. Инициализация данных сортов (если таблица пуста)
+    # 2. Таблица сортов (Паспорта)
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='varieties'")
     if not cursor.fetchone():
-        print("Инициализация сортов: чтение Excel файла...")
         try:
             df_sort = pd.read_excel(EXCEL_FILE, sheet_name='Характеристики сорта', header=3)
             df_sort = df_sort.loc[:, ~df_sort.columns.str.contains('^Unnamed')]
@@ -57,16 +57,67 @@ def init_db():
             df_merged['Подвой'] = df_merged['Подвой'].fillna('—')
             
             df_merged['Название сорто-подвоя'] = df_merged.apply(
-                lambda row: f"{row['Сорт']} / {row['Подвой']}" if row['Подвой'] != '—' else row['Сорт'], 
+                lambda row: f"{row['Сорт']} - {row['Подвой']}" if row['Подвой'] != '—' else row['Сорт'], 
                 axis=1
             )
             
             df_merged = df_merged.fillna('')
             df_merged.to_sql('varieties', conn, if_exists='replace', index=True, index_label='id')
-            print("Успешно! База данных agro_platform.db пополнена.")
         except Exception as e:
             print(f"Ошибка при инициализации БД сортов: {e}")
-    
+
+    # 3. Таблица Регламентов и Коэффициентов
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='protocols'")
+    if not cursor.fetchone():
+        print("Синхронизация матрицы рисков и коэффициентов...")
+        try:
+            # Парсинг Листа "Дерево решений" (Заголовки на 3-й строке)
+            df_dec = pd.read_excel(DECISION_FILE, sheet_name='2. Дерево решений', header=2)
+            protocols_list = []
+            
+            for i in range(1, len(df_dec)):
+                row = df_dec.iloc[i]
+                if pd.isna(row.iloc[6]) or pd.isna(row.iloc[12]): 
+                    continue
+                protocols_list.append({
+                    'phase': clean_nan(row.iloc[6]),
+                    'risk_type': clean_nan(row.iloc[4]),
+                    'risk_name': clean_nan(row.iloc[5]),
+                    'trigger': f"{clean_nan(row.iloc[8])} ... {clean_nan(row.iloc[10])} {clean_nan(row.iloc[11])}",
+                    'action': clean_nan(row.iloc[12]),
+                    'volume': f"{clean_nan(row.iloc[13])} - {clean_nan(row.iloc[14])} {clean_nan(row.iloc[15])}",
+                    'duration': f"{clean_nan(row.iloc[16])} - {clean_nan(row.iloc[17])} {clean_nan(row.iloc[18])}",
+                    'expected': f"{clean_nan(row.iloc[19])} - {clean_nan(row.iloc[20])} {clean_nan(row.iloc[21])}"
+                })
+            
+            if protocols_list:
+                pd.DataFrame(protocols_list).to_sql('protocols', conn, if_exists='replace', index=False)
+            
+            # Парсинг Листа "Коэффициенты" (Заголовки на 5-й строке)
+            df_coef = pd.read_excel(DECISION_FILE, sheet_name='1.1 Коэффициенты корректировки', header=4)
+            coef_list = []
+            for i in range(len(df_coef)):
+                operation = clean_nan(df_coef.iloc[i, 1])
+                if not operation: continue
+                
+                for col_idx in range(2, 27):
+                    combo_name = str(df_coef.columns[col_idx]).strip()
+                    if "Unnamed" in combo_name: continue
+                    val = df_coef.iloc[i, col_idx]
+                    
+                    coef_list.append({
+                        'operation': operation,
+                        'combo_name': combo_name,
+                        'coefficient': float(val) if pd.notna(val) else 0.0
+                    })
+                    
+            if coef_list:
+                pd.DataFrame(coef_list).to_sql('coefficients', conn, if_exists='replace', index=False)
+                
+            print("Матрица решений успешно загружена.")
+        except Exception as e:
+            print(f"Ошибка при загрузке матрицы решений: {e}")
+            
     conn.close()
 
 @app.on_event("startup")
@@ -77,91 +128,131 @@ def startup_event():
 
 @app.post("/api/login")
 def login(creds: Dict[str, str]):
-    """Авторизация пользователя"""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT username, role FROM users WHERE username=? AND password=?", (creds.get('username'), creds.get('password')))
     user = cursor.fetchone()
     conn.close()
-    
-    if user:
-        return {"username": user[0], "role": user[1]}
+    if user: return {"username": user[0], "role": user[1]}
     raise HTTPException(status_code=401, detail="Неверные учетные данные")
 
 @app.get("/api/varieties")
 def get_varieties():
-    """Получение всех сорто-подвоев"""
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM varieties ORDER BY id DESC")
-    rows = cursor.fetchall()
-    data = [dict(row) for row in rows]
+    rows = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return data
+    return rows
 
 @app.post("/api/varieties")
 def create_variety(payload: Dict[str, Any]):
-    """Создание нового сорто-подвоя"""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    
     payload.pop('id', None)
     payload.pop('rootstocks', None) 
-    
     columns = ", ".join([f'"{k}"' for k in payload.keys()])
     placeholders = ", ".join(["?"] * len(payload))
-    values = list(payload.values())
-    
     try:
-        cursor.execute(f"INSERT INTO varieties ({columns}) VALUES ({placeholders})", values)
+        cursor.execute(f"INSERT INTO varieties ({columns}) VALUES ({placeholders})", list(payload.values()))
         conn.commit()
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=str(e))
-        
     conn.close()
-    return {"status": "success", "message": "Сорт успешно добавлен"}
+    return {"status": "success"}
 
 @app.put("/api/varieties/{item_id}")
 def update_variety(item_id: int, payload: Dict[str, Any]):
-    """Обновление данных паспорта"""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    
     payload.pop('id', None)
     payload.pop('rootstocks', None) 
-    
     set_clause = ", ".join([f'"{k}" = ?' for k in payload.keys()])
-    values = list(payload.values())
-    values.append(item_id)
-    
+    values = list(payload.values()) + [item_id]
     try:
-        query = f'UPDATE varieties SET {set_clause} WHERE id = ?'
-        cursor.execute(query, values)
+        cursor.execute(f'UPDATE varieties SET {set_clause} WHERE id = ?', values)
         conn.commit()
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=str(e))
-        
     conn.close()
-    return {"status": "success", "message": "Данные успешно обновлены"}
+    return {"status": "success"}
 
 @app.delete("/api/varieties/{item_id}")
 def delete_variety(item_id: int):
-    """Удаление сорта из базы"""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM varieties WHERE id = ?", (item_id,))
-        conn.commit()
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
+    cursor.execute("DELETE FROM varieties WHERE id = ?", (item_id,))
+    conn.commit()
     conn.close()
-    return {"status": "success", "message": "Сорт успешно удален"}
+    return {"status": "success"}
 
-# Раздача фронтенда
+@app.get("/api/protocols")
+def get_global_protocols():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM protocols")
+    rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return rows
+
+@app.get("/api/varieties/{item_id}/plan")
+def get_variety_plan(item_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM varieties WHERE id=?", (item_id,))
+    variety = cursor.fetchone()
+    if not variety:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Сорт не найден")
+        
+    combo_name = variety["Название сорто-подвоя"]
+    
+    cursor.execute("SELECT operation, coefficient FROM coefficients WHERE combo_name=?", (combo_name,))
+    coeffs = {row['operation']: row['coefficient'] for row in cursor.fetchall() if row['coefficient'] > 0}
+    
+    cursor.execute("SELECT * FROM protocols")
+    all_protocols = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    
+    nodes_dict = {}
+    for p in all_protocols:
+        action = p['action']
+        if coeffs and action not in coeffs:
+            continue
+            
+        coeff = coeffs.get(action, 1.0)
+        phase = p['phase']
+        
+        if phase not in nodes_dict:
+            nodes_dict[phase] = {"phase": phase, "risks": []}
+        
+        risk = next((r for r in nodes_dict[phase]["risks"] if r["name"] == p['risk_name']), None)
+        if not risk:
+            risk = {
+                "type": p['risk_type'],
+                "name": p['risk_name'],
+                "condition": p['trigger'],
+                "desc": "Событие по фенофазе",
+                "operations": []
+            }
+            nodes_dict[phase]["risks"].append(risk)
+            
+        risk["operations"].append({
+            "name": action,
+            "type": "Агротехническая",
+            "volume": p['volume'],
+            "duration": p['duration'],
+            "instruction": f"Ожидаемый результат: {p['expected']}. Коэффициент: x{coeff}"
+        })
+        
+    return list(nodes_dict.values())
+
 @app.get("/")
 def serve_frontend():
     if os.path.exists("index.html"):
