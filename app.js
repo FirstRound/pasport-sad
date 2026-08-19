@@ -1,4 +1,17 @@
-const { createApp, ref, computed, onMounted, nextTick, reactive } = Vue;
+const { createApp, ref, computed, onMounted, reactive } = Vue;
+
+// Порядок фенофаз от ранней к поздней для сортировки блоков
+const PHENOPHASE_ORDER = [
+    'состояние покоя', 'зеленый конус', 'мышиные ушки', 'бутон', 'выдвижение', 'обособление', 'розовый', 'красный', 'баллон',
+    'начало цветения', 'цветение', 'массовое цветение', 'конец цветения', 'опадение лепестков', 'завязь', 'лещина', 'орех',
+    'рост плодов', 'смыкание плодов', 'рост побегов', 'конец роста', 'созревание', 'сбор', 'уборка', 'листопад'
+];
+
+const getPhaseIndex = (phase) => {
+    const pLow = phase.toLowerCase();
+    const idx = PHENOPHASE_ORDER.findIndex(p => pLow.includes(p));
+    return idx !== -1 ? idx : 999;
+};
 
 createApp({
     setup() {
@@ -9,13 +22,12 @@ createApp({
         const currentUser = ref(null);
         const loginForm = reactive({ username: '', password: '' });
 
-        // Восстановление сессии при обновлении страницы
         onMounted(() => {
             const storedUser = localStorage.getItem('agro_user');
             if (storedUser) {
                 currentUser.value = JSON.parse(storedUser);
                 isAuthenticated.value = true;
-                loadApiData(); // Грузим данные только если авторизованы
+                loadApiData();
             }
         });
 
@@ -33,12 +45,9 @@ createApp({
                 currentUser.value = user;
                 isAuthenticated.value = true;
                 
-                // Сохраняем сессию
                 localStorage.setItem('agro_user', JSON.stringify(user));
                 loadApiData(); 
-            } catch (e) {
-                alert(e.message);
-            }
+            } catch (e) { alert(e.message); }
         };
 
         const logout = () => {
@@ -51,7 +60,7 @@ createApp({
         };
 
         // ==========================================
-        // 2. БАЗОВОЕ СОСТОЯНИЕ
+        // 2. БАЗОВОЕ СОСТОЯНИЕ ИНТЕРФЕЙСА
         // ==========================================
         const currentView = ref('directory'); 
         const previousView = ref('directory'); 
@@ -66,20 +75,13 @@ createApp({
         const isModalOpen = ref(false);
         const modalMode = ref('add');
         const form = ref({});
-
         const filters = reactive({ search: '', group: '', category: '', sortField: 'name', sortDir: 'asc' });
 
-        const setView = (view, variety = null) => {
-            if (view === 'detail' || view === 'decision_graph_detail') {
-                previousView.value = currentView.value;
-            }
-            currentView.value = view;
-            if (variety) { 
-                selectedVariety.value = variety; 
-                activeDetailTab.value = 'main';
-                if (variety.rootstocks && variety.rootstocks.length > 0) activeRootstockTab.value = variety.rootstocks[0]['Подвой'];
-            }
-        };
+        const decisionGraphNodes = ref([]);
+        const protocols = ref([]);
+        const activeProtocolCategory = ref('Все');
+        const activeProtocolPhase = ref('Все'); // Новый фильтр фенофаз
+        const selectedGraphPhase = ref(null);
 
         // ==========================================
         // 3. УТИЛИТЫ И ФОРМАТИРОВАНИЕ
@@ -109,8 +111,7 @@ createApp({
             }
             let s = String(val).trim();
             if (s.includes('-') && s.length >= 10) {
-                const datePart = s.split(' ')[0]; 
-                const parts = datePart.split('-');
+                const parts = s.split(' ')[0].split('-');
                 if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`; 
             }
             if (s.includes('.')) {
@@ -124,8 +125,9 @@ createApp({
         const parseDateToTimestamp = (dateStr) => {
             if (!dateStr || dateStr === '—') return null;
             const formatted = formatDateInternal(dateStr);
-            const [d, m, y] = formatted.split('.');
-            if (!d || !m) return null;
+            const parts = formatted.split('.');
+            if (parts.length !== 3) return null;
+            const [d, m, y] = parts;
             return new Date(y || 2026, parseInt(m) - 1, parseInt(d)).getTime();
         };
 
@@ -135,42 +137,35 @@ createApp({
             if (!phaseKey) return 'fa-calendar-check';
             const p = phaseKey.toLowerCase();
             if (p.includes('покоя')) return 'fa-snowflake';
-            if (p.includes('зеленый конус')) return 'fa-leaf';
-            if (p.includes('мышиные ушки')) return 'fa-bug';
-            if (p.includes('бутон')) return 'fa-seedling';
+            if (p.includes('конус') || p.includes('бутон')) return 'fa-leaf';
+            if (p.includes('мышиные')) return 'fa-bug';
             if (p.includes('цветени')) return 'fa-sun';
-            if (p.includes('завязь') || p.includes('лещина') || p.includes('орех')) return 'fa-circle-notch';
+            if (p.includes('завязь') || p.includes('орех') || p.includes('лещина')) return 'fa-circle-notch';
             if (p.includes('рост')) return 'fa-arrow-trend-up';
-            if (p.includes('созревание')) return 'fa-apple-whole';
-            if (p.includes('уборка')) return 'fa-truck-fast';
+            if (p.includes('созревание') || p.includes('сбор') || p.includes('уборка')) return 'fa-apple-whole';
             return 'fa-calendar-check';
         };
 
         const getDynamicIcon = (key) => {
             const k = key.toLowerCase();
             if (k.includes('класс') || k.includes('категор')) return 'fa-award';
-            if (k.includes('вес') || k.includes('масса') || k.includes('нагрузк')) return 'fa-weight-hanging';
-            if (k.includes('калибр') || k.includes('размер') || k.includes('схема') || k.includes('площадь')) return 'fa-ruler-combined';
-            if (k.includes('урожай') || k.includes('плод') || k.includes('сорт') || k.includes('подвой')) return 'fa-leaf';
+            if (k.includes('вес') || k.includes('масса')) return 'fa-weight-hanging';
+            if (k.includes('калибр') || k.includes('размер') || k.includes('схема')) return 'fa-ruler-combined';
+            if (k.includes('урожай') || k.includes('плод') || k.includes('сорт')) return 'fa-leaf';
             if (k.includes('мороз') || k.includes('холод') || k.includes('темпер')) return 'fa-temperature-low';
             if (k.includes('болезн') || k.includes('парш') || k.includes('гнил')) return 'fa-virus';
             if (k.includes('вредител') || k.includes('насеком')) return 'fa-bug';
-            if (k.includes('brix') || k.includes('сахар') || k.includes('сладост')) return 'fa-cubes-stacked';
+            if (k.includes('brix') || k.includes('сахар')) return 'fa-cubes-stacked';
             if (k.includes('кислот')) return 'fa-lemon';
             if (k.includes('твердост') || k.includes('плотност')) return 'fa-dumbbell';
-            if (k.includes('хранен') || k.includes('лежкост')) return 'fa-box-open';
-            if (k.includes('срок') || k.includes('дата') || k.includes('дней')) return 'fa-calendar-days';
+            if (k.includes('хранен') || k.includes('лежкост') || k.includes('ulo')) return 'fa-box-open';
             if (k.includes('крахмал') || k.includes('индекс')) return 'fa-microscope';
-            if (k.includes('окрас') || k.includes('цвет')) return 'fa-palette';
             if (k.includes('%') || k.includes('доля') || k.includes('выход')) return 'fa-chart-pie';
-            if (k.includes('почв') || k.includes('земл') || k.includes('рельеф')) return 'fa-mountain';
-            if (k.includes('вод') || k.includes('орошен') || k.includes('полив') || k.includes('влажн')) return 'fa-droplet';
-            if (k.includes('опылител') || k.includes('цветени')) return 'fa-bee';
             return 'fa-circle-info';
         };
 
         // ==========================================
-        // 4. API ЗАПРОСЫ К СЕРВЕРУ
+        // 4. API ЗАПРОСЫ
         // ==========================================
         const loadApiData = async () => {
             isLoading.value = true;
@@ -178,7 +173,6 @@ createApp({
             try {
                 const response = await fetch('/api/varieties');
                 if (!response.ok) throw new Error("API Error");
-                
                 const data = await response.json();
                 
                 const groupedVarieties = [];
@@ -187,21 +181,30 @@ createApp({
                     if (existing) {
                         if (row['Подвой'] !== '—') existing.rootstocks.push(row);
                     } else {
-                        groupedVarieties.push({
-                            ...row,
-                            rootstocks: row['Подвой'] !== '—' ? [row] : []
-                        });
+                        groupedVarieties.push({ ...row, rootstocks: row['Подвой'] !== '—' ? [row] : [] });
                     }
                 });
 
                 varieties.value = groupedVarieties;
                 if (data.length > 0) columns.value = Object.keys(data[0]).filter(k => k !== 'id' && k !== 'Название сорто-подвоя');
-                isLoading.value = false;
-            } catch (e) {
-                console.error("Ошибка API:", e);
-                loadError.value = true;
-                isLoading.value = false;
-            }
+            } catch (e) { loadError.value = true; }
+            isLoading.value = false;
+        };
+
+        const loadProtocols = async () => {
+            try {
+                const response = await fetch('/api/protocols');
+                if (!response.ok) return;
+                const data = await response.json();
+                protocols.value = data.map(p => ({
+                    category: p.risk_type.includes('Природн') ? 'Климат' : (p.risk_type.includes('Био') ? 'Болезни' : 'Вредители'),
+                    threat: p.risk_name,
+                    phase: p.phase,
+                    condition: p.trigger,
+                    desc: p.expected,
+                    action: p.action
+                }));
+            } catch(e) { console.error(e); }
         };
 
         const saveVariety = async () => {
@@ -209,50 +212,72 @@ createApp({
             try {
                 const method = modalMode.value === 'add' ? 'POST' : 'PUT';
                 const url = modalMode.value === 'add' ? '/api/varieties' : `/api/varieties/${form.value.id}`;
-                
                 const response = await fetch(url, {
-                    method: method,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(form.value)
+                    method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form.value)
                 });
-
                 if (!response.ok) throw new Error("Ошибка сервера");
                 closeModal();
                 await loadApiData(); 
-            } catch(e) {
-                alert("Ошибка при сохранении данных в базу.");
-            }
+            } catch(e) { alert("Ошибка при сохранении данных в базу."); }
         };
 
         const deleteVariety = async (variety) => {
             if (currentUser.value?.role !== 'admin') return;
-            if (!confirm(`Вы уверены, что хотите удалить сорт "${variety['Сорт']}" из базы данных навсегда?`)) return;
+            if (!confirm(`Удалить сорт "${variety['Сорт']}"?`)) return;
             try {
-                const response = await fetch(`/api/varieties/${variety.id}`, { method: 'DELETE' });
-                if (!response.ok) throw new Error("Ошибка при удалении");
+                await fetch(`/api/varieties/${variety.id}`, { method: 'DELETE' });
                 await loadApiData(); 
-            } catch(e) {
-                alert("Не удалось удалить сорт.");
+            } catch(e) { alert("Ошибка удаления."); }
+        };
+
+        // НАВИГАЦИЯ И УМНЫЙ ПАРСИНГ ДАТ ИЗ БД
+        const setView = async (view, variety = null) => {
+            if (view === 'detail' || view === 'decision_graph_detail') previousView.value = currentView.value;
+            if (view === 'protocols' && protocols.value.length === 0) await loadProtocols();
+
+            if (view === 'decision_graph_detail' && variety) {
+                selectedVariety.value = variety;
+                decisionGraphNodes.value = [];
+                selectedGraphPhase.value = null;
+                try {
+                    const res = await fetch(`/api/varieties/${variety.id}/plan`);
+                    if (res.ok) {
+                        const nodes = await res.json();
+                        decisionGraphNodes.value = nodes.map(node => {
+                            // Ищем ключи, содержащие название фазы и слова 'начала' / 'окончания'
+                            const startKey = Object.keys(variety).find(k => k.toLowerCase().includes(node.phase.toLowerCase()) && k.toLowerCase().includes('начала'));
+                            const endKey = Object.keys(variety).find(k => k.toLowerCase().includes(node.phase.toLowerCase()) && k.toLowerCase().includes('окончания'));
+                            
+                            return {
+                                ...node,
+                                startFormatted: startKey && variety[startKey] ? formatDateInternal(variety[startKey]) : '—',
+                                endFormatted: endKey && variety[endKey] ? formatDateInternal(variety[endKey]) : '—'
+                            };
+                        });
+                        if (decisionGraphNodes.value.length > 0) selectedGraphPhase.value = decisionGraphNodes.value[0];
+                    }
+                } catch(e) { console.error("Ошибка загрузки плана", e); }
+            }
+
+            currentView.value = view;
+            if (variety && view === 'detail') { 
+                selectedVariety.value = variety; 
+                activeDetailTab.value = 'main';
+                if (variety.rootstocks && variety.rootstocks.length > 0) activeRootstockTab.value = variety.rootstocks[0]['Подвой'];
             }
         };
 
         const openModal = (mode, variety = null) => {
             modalMode.value = mode;
             let editForm = {};
-            
             let sourceData = variety;
             if (variety && currentView.value === 'detail') {
                 sourceData = extendedVarietyDetails.value;
             } else if (variety && variety.rootstocks && variety.rootstocks.length > 0) {
                 sourceData = { ...variety, ...variety.rootstocks[0] };
             }
-
-            columns.value.forEach(c => { 
-                editForm[c] = sourceData ? (sourceData[c] !== undefined ? sourceData[c] : '') : ''; 
-            });
-            
+            columns.value.forEach(c => { editForm[c] = sourceData && sourceData[c] !== undefined ? sourceData[c] : ''; });
             if (sourceData && sourceData.id) editForm.id = sourceData.id;
-            
             form.value = editForm;
             isModalOpen.value = true;
         };
@@ -260,11 +285,10 @@ createApp({
         const closeModal = () => { isModalOpen.value = false; };
 
         // ==========================================
-        // 5. ФИЛЬТРАЦИЯ И СОРТИРОВКА
+        // 5. ФИЛЬТРАЦИЯ
         // ==========================================
         const viewTitle = computed(() => ({ 
-            'directory': 'Реестр сортов', 
-            'cards': 'Витрина урожая', 
+            'directory': 'Реестр сортов', 'cards': 'Витрина урожая', 
             'detail': selectedVariety.value ? selectedVariety.value['Сорт'] : 'Паспорт',
         })[currentView.value] || 'План-протоколы');
 
@@ -279,10 +303,6 @@ createApp({
 
             result.sort((a, b) => {
                 let valA = String(a['Сорт'] || ''), valB = String(b['Сорт'] || '');
-                if (filters.sortField === 'brix') {
-                    valA = parseNumber(a['BRIX (от), %']); valB = parseNumber(b['BRIX (от), %']);
-                    return filters.sortDir === 'asc' ? valA - valB : valB - valA;
-                }
                 return filters.sortDir === 'asc' ? valA.localeCompare(valB, 'ru') : valB.localeCompare(valA, 'ru');
             });
             return result;
@@ -292,7 +312,7 @@ createApp({
         const uniqueCategories = computed(() => [...new Set(varieties.value.map(v => v['Категория реализации']).filter(Boolean))]);
 
         // ==========================================
-        // 6. ПОДГОТОВКА ДАННЫХ ДЛЯ UI
+        // 6. ДАННЫЕ ДЛЯ UI АНАЛИТИКИ
         // ==========================================
         const extendedVarietyDetails = computed(() => {
             if (!selectedVariety.value) return {};
@@ -309,14 +329,10 @@ createApp({
             if (!v) return { calibers: [], classes: [], losses: [], immunity: [], starch: {} };
 
             const calLabels = ['55-60', '60-65', '65-70', '70-75', '75-80', '80-85', '85+'];
-            const calColors = ['text-[#D5D0C5]', 'text-[#A8B29C]', 'text-[#7D9475]', 'text-brand-green', 'text-[#3D5C3A]', 'text-[#1e2a22]', 'text-brand-yellow'];
-            const calibers = calLabels.map((l, i) => ({ label: l, value: parseNumber(v[l]), color: calColors[i] })).filter(c => c.value > 0);
+            const calibers = calLabels.map(l => ({ label: l, value: parseNumber(v[l]) })).filter(c => c.value > 0);
 
             const classLabels = ['1 класс', '2 класс', '3 класс', '4 класс', '5 класс', '6 класс', 'е.у. ', '% индустриального яблока по валовке'];
-            const classes = classLabels.map(l => {
-                const cleanLabel = l.replace('% ', '').replace(' яблока по валовке', '');
-                return { label: cleanLabel, value: parseNumber(v[l]) };
-            }).filter(c => c.value > 0);
+            const classes = classLabels.map(l => ({ label: l.replace('% ', '').replace(' яблока по валовке', ''), value: parseNumber(v[l]) })).filter(c => c.value > 0);
 
             const lossFields = ['Град, %', 'Гниль, %', 'Болезнь, %', 'Вредители, %', 'Критический недокалибр, %', 'Физиологический дефект, %', 'Перезрелость/незрелость, %', 'Иная причина, %'];
             const losses = lossFields.map(f => {
@@ -328,9 +344,7 @@ createApp({
             const immunity = Object.keys(immFields).map(k => ({ label: immFields[k], value: parseNumber(v[k]) })).filter(i => i.value > 0);
 
             const starch = {
-                start: parseNumber(v['Крахмал START (от), б']),
-                optimum: parseNumber(v['Крахмал Optimum (от), б']),
-                stop: parseNumber(v['Крахмал STOP (от), б'])
+                start: parseNumber(v['Крахмал START (от), б']), optimum: parseNumber(v['Крахмал Optimum (от), б']), stop: parseNumber(v['Крахмал STOP (от), б'])
             };
 
             return { calibers, classes, losses, immunity, starch };
@@ -347,10 +361,7 @@ createApp({
         ];
 
         const groupLogic = (keysArray, dataObject, isForDisplay = false) => {
-            const groups = {
-                'Идентификация и Селекция': [], 'Агрономия и Посадка': [], 'Качество и Свойства плодов': [],
-                'Дополнительная аналитика': [], 'Сводка фенофаз': []
-            };
+            const groups = { 'Идентификация и Селекция': [], 'Агрономия и Посадка': [], 'Качество и Свойства плодов': [], 'Дополнительная аналитика': [], 'Сводка фенофаз': [] };
             const datesMap = new Map();
             
             keysArray.forEach(key => {
@@ -373,9 +384,9 @@ createApp({
 
                 if (kl.includes('селекционер') || kl.includes('производител') || kl.includes('страна') || kl.includes('потенциал') || kl.includes('канал') || kl.includes('sku')) {
                     groups['Идентификация и Селекция'].push(fieldInfo);
-                } else if (kl.includes('урожайност') || kl.includes('морозо') || kl.includes('совместимост') || kl.includes('опылител') || kl.includes('схема') || kl.includes('площадь') || kl.includes('деревьев') || kl.includes('нагрузк') || kl.includes('кроны') || kl.includes('плодоношен')) {
+                } else if (kl.includes('урожайност') || kl.includes('морозо') || kl.includes('совместимост') || kl.includes('опылител') || kl.includes('схема') || kl.includes('площадь')) {
                     groups['Агрономия и Посадка'].push(fieldInfo);
-                } else if (kl.includes('окраск') || kl.includes('форма') || kl.includes('плотност') || kl.includes('зрелост') || kl.includes('нажим') || kl.includes('целевая масса') || kl.includes('сбор') || kl.includes('дельта')) {
+                } else if (kl.includes('окраск') || kl.includes('форма') || kl.includes('плотност') || kl.includes('зрелост') || kl.includes('сбор')) {
                     groups['Качество и Свойства плодов'].push(fieldInfo);
                 } else {
                     groups['Дополнительная аналитика'].push(fieldInfo);
@@ -385,14 +396,10 @@ createApp({
             if (dataObject && isForDisplay) {
                 datesMap.forEach((dates, baseName) => {
                     if(dates.start !== '—' || dates.end !== '—') {
-                        groups['Сводка фенофаз'].push({ 
-                            key: `ФЕНОФАЗА: ${baseName.toUpperCase()}`, 
-                            value: `${formatDateInternal(dates.start)} - ${formatDateInternal(dates.end)}` 
-                        });
+                        groups['Сводка фенофаз'].push({ key: `ФЕНОФАЗА: ${baseName.toUpperCase()}`, value: `${formatDateInternal(dates.start)} - ${formatDateInternal(dates.end)}` });
                     }
                 });
             }
-            
             Object.keys(groups).forEach(k => { if(groups[k].length === 0) delete groups[k]; });
             return groups;
         };
@@ -401,13 +408,11 @@ createApp({
         const groupedFormFields = computed(() => groupLogic(columns.value, null, false));
 
         // ==========================================
-        // 7. ДИНАМИЧЕСКИЙ КАЛЕНДАРЬ ФЕНОФАЗ
+        // 7. КАЛЕНДАРЬ ФЕНОФАЗ
         // ==========================================
         const currentCalendarDate = ref(dayjs()); 
-        
         const calendarMonthName = computed(() => currentCalendarDate.value.format('MMMM YYYY'));
         const daysInMonth = computed(() => currentCalendarDate.value.daysInMonth());
-        
         const firstDayOffset = computed(() => {
             let d = currentCalendarDate.value.startOf('month').day();
             return d === 0 ? 6 : d - 1; 
@@ -415,7 +420,6 @@ createApp({
 
         const prevMonth = () => { currentCalendarDate.value = currentCalendarDate.value.subtract(1, 'month'); };
         const nextMonth = () => { currentCalendarDate.value = currentCalendarDate.value.add(1, 'month'); };
-        
         const isToday = (day) => {
             const now = dayjs();
             return day === now.date() && currentCalendarDate.value.month() === now.month() && currentCalendarDate.value.year() === now.year();
@@ -424,24 +428,19 @@ createApp({
         const getActivePhaseForDay = (dayNum) => {
             if(!extendedVarietyDetails.value) return null;
             const checkTime = currentCalendarDate.value.date(dayNum).hour(12).valueOf();
-            
             for (const [key, value] of Object.entries(extendedVarietyDetails.value)) {
                 if (key.includes(' - дата начала')) {
                     const startStr = formatDateInternal(value);
                     const endKey = key.replace('дата начала', 'дата окончания');
                     const endStr = formatDateInternal(extendedVarietyDetails.value[endKey]);
-                    
                     if (startStr === '—' || endStr === '—') continue;
                     
                     const [sD, sM, sY] = startStr.split('.');
                     const [eD, eM, eY] = endStr.split('.');
-                    
                     const start = new Date(sY || 2026, parseInt(sM)-1, sD).getTime();
                     const end = new Date(eY || 2026, parseInt(eM)-1, eD, 23, 59, 59).getTime();
                     
-                    if (checkTime >= start && checkTime <= end) {
-                        return cleanPhaseName(key.split(' - ')[0]);
-                    }
+                    if (checkTime >= start && checkTime <= end) return cleanPhaseName(key.split(' - ')[0]);
                 }
             }
             return null;
@@ -459,45 +458,43 @@ createApp({
         });
 
         // ==========================================
-        // 8. ГРАФ РЕШЕНИЙ И РЕГЛАМЕНТЫ
+        // 8. РЕГЛАМЕНТЫ И ФИЛЬТРЫ (С ХРОНОЛОГИЧЕСКОЙ ГРУППИРОВКОЙ)
         // ==========================================
-        const decisionGraphNodes = computed(() => {
-            if (!extendedVarietyDetails.value) return [];
-            const nodes = [];
-            const datesMap = new Map();
-            columns.value.forEach(key => {
-                if (key.toLowerCase().includes(' - дата')) {
-                    const baseName = cleanPhaseName(key.split(' - ')[0]);
-                    if (!datesMap.has(baseName)) datesMap.set(baseName, { name: baseName, start: '—', end: '—' });
-                    if (key.toLowerCase().includes('начала')) datesMap.get(baseName).start = extendedVarietyDetails.value[key] || '—';
-                    else datesMap.get(baseName).end = extendedVarietyDetails.value[key] || '—';
-                }
+        const uniquePhases = computed(() => {
+            const phases = [...new Set(protocols.value.map(p => p.phase))];
+            phases.sort((a, b) => getPhaseIndex(a) - getPhaseIndex(b));
+            return phases;
+        });
+
+        const groupedFilteredProtocols = computed(() => {
+            let filtered = protocols.value;
+            if (activeProtocolCategory.value !== 'Все') {
+                filtered = filtered.filter(p => p.category === activeProtocolCategory.value);
+            }
+            if (activeProtocolPhase.value !== 'Все') {
+                filtered = filtered.filter(p => p.phase === activeProtocolPhase.value);
+            }
+            
+            // Группировка
+            const groups = {};
+            filtered.forEach(p => {
+                if (!groups[p.phase]) groups[p.phase] = [];
+                groups[p.phase].push(p);
             });
 
-            datesMap.forEach(v => {
-                let risks = [];
-                if (v.name === 'Состояние покоя') {
-                    risks.push({ type: 'Природные', name: 'Резкие заморозки', condition: '-28°C ... -20°C', desc: 'Критическое понижение температуры.', operations: [{ name: 'Обрезка деревьев санитарная', type: 'Механическая', volume: '50-100%', duration: '3-7 дней', instruction: 'Срез веток на отращивание.' }] });
-                }
-                nodes.push({ phase: v.name, startFormatted: formatDateInternal(v.start), endFormatted: formatDateInternal(v.end), risks: risks });
-            });
-            return nodes;
+            // Сортировка блоков (ранние фенофазы -> поздние)
+            const sortedGroups = {};
+            Object.keys(groups)
+                .sort((a, b) => getPhaseIndex(a) - getPhaseIndex(b))
+                .forEach(k => { sortedGroups[k] = groups[k]; });
+                
+            return sortedGroups;
         });
-        
-        const activeProtocolCategory = ref('Все');
-        const protocols = [
-            { category: 'Климат', threat: 'Резкие заморозки', phase: 'Состояние покоя', condition: '-28°C ... -20°C', desc: 'Критическое понижение температуры.', action: 'Санитарная обрезка'},
-            { category: 'Болезни', threat: 'Эпифитотия парши', phase: 'Мышиные ушки', condition: 'Влажность > 80%', desc: 'Активный выброс аскоспор парши.', action: 'Превентивное опрыскивание'}
-        ];
-        const filteredProtocols = computed(() => activeProtocolCategory.value === 'Все' ? protocols : protocols.filter(p => p.category === activeProtocolCategory.value));
+
         const getProtocolColor = (cat) => cat === 'Климат' ? 'bg-blue-500' : 'bg-brand-green';
         const getProtocolBadgeClass = (cat) => cat === 'Климат' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-brand-green/10 text-brand-green border-brand-green/20';
         const getProtocolIcon = (cat) => cat === 'Климат' ? 'fa-cloud-sun-rain text-blue-500' : 'fa-virus text-brand-green';
-        const selectedGraphPhase = ref(null);
 
-        // ==========================================
-        // ЭКСПОРТ ВСЕХ ФУНКЦИЙ (Включая parseNumber!)
-        // ==========================================
         return {
             isAuthenticated, currentUser, loginForm, login, logout,
             currentView, previousView, varieties, selectedVariety, extendedVarietyDetails, activeRootstockTab, uiData, viewTitle, 
@@ -506,9 +503,9 @@ createApp({
             
             calendarMonthName, daysInMonth, firstDayOffset, prevMonth, nextMonth, isToday, getActivePhaseForDay, calendarSummaryDuration,
             
-            decisionGraphNodes, selectedGraphPhase, activeProtocolCategory, filteredProtocols, getProtocolColor, getProtocolBadgeClass, getProtocolIcon, activeDetailTab,
+            decisionGraphNodes, selectedGraphPhase, activeProtocolCategory, activeProtocolPhase, uniquePhases, groupedFilteredProtocols, 
+            getProtocolColor, getProtocolBadgeClass, getProtocolIcon, activeDetailTab,
             
-            // Здесь добавлены ВСЕ нужные шаблону функции:
             setView, parseNumber, formatValue, formatDateInternal, getDynamicIcon, getPhaseIcon, loadApiData,
             openModal, closeModal, saveVariety, deleteVariety
         }
