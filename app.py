@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from typing import Dict, Any
 import os
+import glob
 
 app = FastAPI(title="Agro Platform API")
 
@@ -18,7 +19,10 @@ app.add_middleware(
 
 DB_FILE = "agro_platform.db"
 EXCEL_FILE = "База для Паспорта сорта_v4.xlsx"
-DECISION_FILE = "20260601_Паспорта_сортов_матрица_принятия_решений_v21_JP (2).xlsx"
+
+# Умный поиск файла матрицы рисков (игнорируем проблемы с unicode-символами "й")
+decision_files = glob.glob("*матрица_принятия_решени*.xlsx")
+DECISION_FILE = decision_files[0] if decision_files else "20260601_Паспорта_сортов_матрица_принятия_решений_v21_JP (2).xlsx"
 
 def clean_nan(val):
     if pd.isna(val): return ""
